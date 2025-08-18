@@ -188,6 +188,14 @@ const struct UpdateResult *shorebird_update_with_result(const char *c_channel);
 SHOREBIRD_EXPORT void shorebird_start_update_thread(void);
 
 /**
+ * Update the base URL for patch checking and downloading.
+ * The base_url parameter must be a valid URL string (e.g., "https://api.example.com").
+ * Returns true if the base URL was updated successfully, false otherwise.
+ */
+SHOREBIRD_EXPORT
+bool shorebird_update_base_url(const char *c_base_url);
+
+/**
  * Tell the updater that we're launching from what it told us was the
  * next patch to boot from. This will copy the next boot patch to be the
  * `current_boot` patch.

@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::string::ToString;
+use url::Url;
 
 use crate::config::{current_arch, current_platform, UpdateConfig};
 use crate::events::PatchEvent;
@@ -17,6 +18,35 @@ pub fn patches_check_url(base_url: &str) -> String {
 
 fn patches_events_url(base_url: &str) -> String {
     format!("{base_url}/api/v1/patches/events")
+}
+
+/// Replace only the domain in a download URL with the configured base URL domain
+/// Keeps the original path, query parameters, and fragment intact
+/// This ensures patch downloads use the same domain as API requests
+fn replace_download_url_domain(download_url: &str, base_url: &str) -> anyhow::Result<String> {
+    let download_parsed = Url::parse(download_url)
+        .with_context(|| format!("Failed to parse download URL: {}", download_url))?;
+    
+    let base_parsed = Url::parse(base_url)
+        .with_context(|| format!("Failed to parse base URL: {}", base_url))?;
+    
+    // Create new URL with base domain/scheme/port but keep original path, query, and fragment
+    let mut new_url = download_parsed;
+    new_url.set_scheme(base_parsed.scheme())
+        .map_err(|_| anyhow::anyhow!("Failed to set scheme"))?;
+    new_url.set_host(base_parsed.host_str())
+        .map_err(|_| anyhow::anyhow!("Failed to set host"))?;
+    if let Some(port) = base_parsed.port() {
+        new_url.set_port(Some(port))
+            .map_err(|_| anyhow::anyhow!("Failed to set port"))?;
+    } else {
+        new_url.set_port(None)
+            .map_err(|_| anyhow::anyhow!("Failed to clear port"))?;
+    }
+    
+    let result = new_url.to_string();
+    shorebird_debug!("Replaced download URL domain: {} -> {}", download_url, result);
+    Ok(result)
 }
 
 pub type PatchCheckRequestFn = fn(&str, PatchCheckRequest) -> anyhow::Result<PatchCheckResponse>;
@@ -216,16 +246,23 @@ pub fn send_patch_event(event: PatchEvent, config: &UpdateConfig) -> anyhow::Res
     report_event_fn(url, request)
 }
 
-/// Downloads the file at `url` to `path`.
-pub fn download_to_path(
+/// Downloads the file at `url` to `path`, optionally replacing the domain.
+pub fn download_to_path_with_domain_replacement(
     network_hooks: &NetworkHooks,
     url: &str,
     path: &Path,
+    base_url: Option<&str>,
 ) -> anyhow::Result<()> {
-    shorebird_info!("Downloading patch from: {}", url);
+    let actual_url = if let Some(base) = base_url {
+        replace_download_url_domain(url, base)?
+    } else {
+        url.to_string()
+    };
+    
+    shorebird_info!("Downloading patch from: {} (original: {})", actual_url, url);
     // Download the file at the given url to the given path.
     let download_file_hook = network_hooks.download_file_fn;
-    let bytes = download_file_hook(url)?;
+    let bytes = download_file_hook(&actual_url)?;
     // Ensure the download directory exists.
     if let Some(parent) = path.parent() {
         shorebird_debug!("Creating download directory: {:?}", parent);
@@ -240,9 +277,20 @@ pub fn download_to_path(
     Ok(())
 }
 
+/// Downloads the file at `url` to `path`.
+/// This is the legacy function maintained for backward compatibility.
+pub fn download_to_path(
+    network_hooks: &NetworkHooks,
+    url: &str,
+    path: &Path,
+) -> anyhow::Result<()> {
+    download_to_path_with_domain_replacement(network_hooks, url, path, None)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{network::PatchCheckResponse, time};
+    use super::replace_download_url_domain;
 
     use super::{patches_events_url, PatchEvent};
     use crate::events::EventType;
@@ -288,6 +336,31 @@ mod tests {
             json_string,
             r#"{"event":{"app_id":"app_id","arch":"arch","type":"__patch_install__","patch_number":1,"platform":"platform","release_version":"release_version","timestamp":1234,"message":null}}"#
         )
+    }
+
+    #[test]
+    fn test_replace_download_url_domain() {
+        // Test basic domain replacement
+        let original_url = "https://cdn.shorebird.cloud/api/v1/patches/3ad4ac88-3699-493f-a207-aa0cf962e89d/android/aarch64/257503/dlc.vmcode";
+        let base_url = "https://api.example.com";
+        let result = replace_download_url_domain(original_url, base_url).unwrap();
+        assert_eq!(result, "https://api.example.com/api/v1/patches/3ad4ac88-3699-493f-a207-aa0cf962e89d/android/aarch64/257503/dlc.vmcode");
+
+        // Test with query parameters
+        let original_url_with_query = "https://storage.googleapis.com/patch_artifacts/17a28ec1-00cf-452d-bdf9-dbb9acb78600/dlc.vmcode?token=abc123&version=2";
+        let result_with_query = replace_download_url_domain(original_url_with_query, base_url).unwrap();
+        assert_eq!(result_with_query, "https://api.example.com/patch_artifacts/17a28ec1-00cf-452d-bdf9-dbb9acb78600/dlc.vmcode?token=abc123&version=2");
+
+        // Test with custom port
+        let base_url_with_port = "https://api.example.com:8443";
+        let result_with_port = replace_download_url_domain(original_url, base_url_with_port).unwrap();
+        assert_eq!(result_with_port, "https://api.example.com:8443/api/v1/patches/3ad4ac88-3699-493f-a207-aa0cf962e89d/android/aarch64/257503/dlc.vmcode");
+
+        // Test HTTP to HTTPS conversion
+        let http_base = "https://secure.example.com";
+        let http_original = "http://cdn.shorebird.cloud/path/to/patch";
+        let result_https = replace_download_url_domain(http_original, http_base).unwrap();
+        assert_eq!(result_https, "https://secure.example.com/path/to/patch");
     }
 
     #[test]

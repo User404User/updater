@@ -1,3 +1,52 @@
 # The Flutter engine builds with static crt runtime so we need to too to match.
 [target.'cfg(all(windows, target_env = "msvc"))']
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# Android 目标配置 - 使用环境变量设置的工具链路径
+[target.aarch64-linux-android]
+rustflags = [
+  "-C", "prefer-dynamic=no",
+  "-C", "panic=abort",
+  "-C", "link-arg=-Wl,--allow-shlib-undefined",
+]
+
+[target.armv7-linux-androideabi]
+rustflags = [
+  "-C", "prefer-dynamic=no",
+  "-C", "panic=abort",
+  "-C", "link-arg=-Wl,--allow-shlib-undefined",
+]
+
+[target.x86_64-linux-android]
+rustflags = [
+  "-C", "prefer-dynamic=no",
+  "-C", "panic=abort",
+  "-C", "link-arg=-Wl,--allow-shlib-undefined",
+]
+
+[target.i686-linux-android]
+rustflags = [
+  "-C", "prefer-dynamic=no",
+  "-C", "panic=abort",
+  "-C", "link-arg=-Wl,--allow-shlib-undefined",
+]
+
+# iOS 目标配置
+[target.aarch64-apple-ios]
+rustflags = [
+  "-C", "link-arg=-arch",
+  "-C", "link-arg=arm64",
+]
+
+[target.x86_64-apple-ios]
+rustflags = [
+  "-C", "link-arg=-arch",
+  "-C", "link-arg=x86_64",
+]
+
+[target.aarch64-apple-ios-sim]
+rustflags = [
+  "-C", "link-arg=-arch",
+  "-C", "link-arg=arm64",
+  "-C", "link-arg=-Wl,-undefined,dynamic_lookup",
+]
