@@ -4,9 +4,9 @@ import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
-import 'generated/updater_bindings.g.dart';
-import 'shorebird_updater.dart';
-import 'updater.dart';
+import 'package:shorebird_code_push/src/generated/updater_bindings.g.dart';
+import 'package:shorebird_code_push/src/shorebird_updater.dart';
+import 'package:shorebird_code_push/src/updater.dart';
 
 @visibleForTesting
 
@@ -138,12 +138,6 @@ Downloading update failed but reason is unknown due to legacy updater.
 Please upgrade the Shorebird Engine for improved error messages.''',
       reason: UpdateFailureReason.unknown,
     );
-  }
-
-  @override
-  bool updateBaseUrl(String baseUrl) {
-    if (!_isAvailable) return false;
-    return _updater.updateBaseUrl(baseUrl);
   }
 }
 

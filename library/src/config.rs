@@ -87,19 +87,6 @@ pub struct UpdateConfig {
     pub patch_public_key: Option<String>,
 }
 
-/// Update the base URL in the existing config
-pub fn update_base_url(new_base_url: String) -> Result<()> {
-    with_config_mut(|config: &mut Option<UpdateConfig>| {
-        if let Some(ref mut update_config) = config {
-            update_config.base_url = new_base_url;
-            shorebird_debug!("Base URL updated to: {}", update_config.base_url);
-            Ok(())
-        } else {
-            bail!("Updater not initialized, cannot update base URL");
-        }
-    })
-}
-
 /// Returns Ok if the config was set successfully, Err if it was already set.
 pub fn set_config(
     app_config: AppConfig,

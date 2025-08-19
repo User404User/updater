@@ -12,7 +12,6 @@ Code Push Updater. Use this in your Shorebird app to:
 - ✅ Get the currently installed patch version
 - ✅ Check whether a new patch is available
 - ✅ Download new patches
-- ✅ Update base URL for custom update servers
 
 ## Getting Started
 
@@ -121,42 +120,6 @@ if (status == UpdateStatus.outdated) {
   await updater.update(track: UpdateTrack.beta);
 }
 ```
-
-## Dynamic Base URL Configuration
-
-If you need to use a custom update server or change the base URL at runtime, you can use the `updateBaseUrl` method:
-
-```dart
-import 'package:shorebird_code_push/shorebird_code_push.dart';
-
-// Update the base URL for patch checking and downloading
-final success = ShorebirdCodePush.updateBaseUrl('https://your-custom-server.com');
-
-if (success) {
-  print('Base URL updated successfully');
-  // Now all subsequent update checks will use the new URL
-  final status = await updater.checkForUpdate();
-  // ...
-} else {
-  print('Failed to update base URL');
-}
-```
-
-### Use Cases for Custom Base URLs
-
-- **Enterprise Deployments**: Use your own update servers for security and compliance
-- **Regional Servers**: Route users to geographically closer servers for better performance
-- **Testing Environments**: Switch between development, staging, and production servers
-- **Offline/Air-gapped Networks**: Use internal servers in restricted environments
-
-### Important Notes
-
-- The base URL must be a valid URL format (e.g., `https://api.example.com`)
-- The URL change is persistent until the app restarts or another `updateBaseUrl` call is made
-- This affects all subsequent update operations (check, download, etc.)
-- The original server configuration from `shorebird.yaml` will be restored on app restart
-
-## Custom Track Names
 
 You can also use custom track names. When creating a patch, specify a track name
 like this:

@@ -334,22 +334,6 @@ pub extern "C" fn shorebird_start_update_thread() {
     updater::start_update_thread();
 }
 
-/// Update the base URL for patch checking and downloading.
-/// The base_url parameter must be a valid URL string (e.g., "https://api.example.com").
-/// Returns true if the base URL was updated successfully, false otherwise.
-#[no_mangle]
-pub extern "C" fn shorebird_update_base_url(c_base_url: *const c_char) -> bool {
-    log_on_error(
-        || {
-            let base_url = to_rust(c_base_url)?;
-            crate::config::update_base_url(base_url)?;
-            Ok(true)
-        },
-        "updating base URL",
-        false,
-    )
-}
-
 /// Tell the updater that we're launching from what it told us was the
 /// next patch to boot from. This will copy the next boot patch to be the
 /// `current_boot` patch.
