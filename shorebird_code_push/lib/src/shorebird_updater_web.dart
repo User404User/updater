@@ -24,4 +24,7 @@ class ShorebirdUpdaterImpl implements ShorebirdUpdater {
 
   @override
   Future<void> update({UpdateTrack? track}) async {}
+
+  @override
+  bool updateBaseUrl(String baseUrl) => false;
 }

@@ -12,7 +12,7 @@ use crate::cache::{PatchInfo, UpdaterState};
 use crate::config::{set_config, with_config, UpdateConfig};
 use crate::events::{EventType, PatchEvent};
 use crate::logging::init_logging;
-use crate::network::{download_to_path, patches_check_url, NetworkHooks, PatchCheckRequest};
+use crate::network::{download_to_path_with_domain_replacement, patches_check_url, NetworkHooks, PatchCheckRequest};
 use crate::updater_lock::{with_updater_thread_lock, UpdaterLockState};
 use crate::yaml::YamlConfig;
 
@@ -410,7 +410,7 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
     let download_dir = PathBuf::from(&config.download_dir);
     let download_path = download_dir.join(patch.number.to_string());
     // Consider supporting allowing the system to download for us (e.g. iOS).
-    download_to_path(&config.network_hooks, &patch.download_url, &download_path)?;
+    download_to_path_with_domain_replacement(&config.network_hooks, &patch.download_url, &download_path, Some(&config.base_url))?;
 
     let output_path = download_dir.join(format!("{}.full", patch.number));
     let patch_base_rs = patch_base(&config)?;

@@ -1,5 +1,6 @@
-import 'package:shorebird_code_push/src/shorebird_updater_io.dart'
-    if (dart.library.js_interop) './shorebird_updater_web.dart';
+import 'shorebird_updater_io.dart'
+    if (dart.library.js_interop) 'shorebird_updater_web.dart'
+    as implementation;
 
 /// The reason a call to [ShorebirdUpdater.update] failed.
 enum UpdateFailureReason {
@@ -104,7 +105,7 @@ enum UpdateStatus {
 /// {@endtemplate}
 abstract class ShorebirdUpdater {
   /// {@macro shorebird_updater}
-  factory ShorebirdUpdater() => ShorebirdUpdaterImpl();
+  factory ShorebirdUpdater() => implementation.ShorebirdUpdaterImpl();
 
   /// Whether the updater is available on the current platform.
   /// The most common reasons for this returning false are:
@@ -154,6 +155,12 @@ abstract class ShorebirdUpdater {
   /// * [checkForUpdate], which should be called to check if an update is
   ///   available before calling this method.
   Future<void> update({UpdateTrack? track});
+
+  /// Update the base URL for patch checking and downloading.
+  /// The base_url parameter must be a valid URL string (e.g., "https://api.example.com").
+  /// Returns true if the base URL was updated successfully, false otherwise.
+  /// Returns false if the updater is not available.
+  bool updateBaseUrl(String baseUrl);
 }
 
 /// A track to check for updates on.

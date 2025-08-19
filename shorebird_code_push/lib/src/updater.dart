@@ -3,8 +3,8 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
-import 'package:shorebird_code_push/src/generated/updater_bindings.g.dart';
-import 'package:shorebird_code_push/src/shorebird_updater.dart';
+import 'generated/updater_bindings.g.dart';
+import 'shorebird_updater.dart';
 
 /// {@template updater}
 /// A wrapper around the generated [UpdaterBindings] that, when necessary,
@@ -47,4 +47,10 @@ class Updater {
   /// Frees an update result allocated by the updater.
   void freeUpdateResult(Pointer<UpdateResult> ptr) =>
       bindings.shorebird_free_update_result(ptr);
+
+  /// Update the base URL for patch checking and downloading.
+  /// The base_url parameter must be a valid URL string (e.g., "https://api.example.com").
+  /// Returns true if the base URL was updated successfully, false otherwise.
+  bool updateBaseUrl(String baseUrl) =>
+      bindings.shorebird_update_base_url(baseUrl.toNativeUtf8().cast<Char>());
 }
