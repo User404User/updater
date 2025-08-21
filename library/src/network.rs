@@ -279,7 +279,8 @@ pub fn download_to_path_with_domain_replacement(
 
 /// Downloads the file at `url` to `path`.
 /// This is the legacy function maintained for backward compatibility.
-pub fn download_to_path(
+#[allow(dead_code)]
+fn download_to_path(
     network_hooks: &NetworkHooks,
     url: &str,
     path: &Path,
