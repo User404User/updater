@@ -1,0 +1,11 @@
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/httparse-eb19dfc083a71fbf.d: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/iter.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/macros.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/mod.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/fallback.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/libhttparse-eb19dfc083a71fbf.rlib: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/iter.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/macros.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/mod.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/fallback.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/libhttparse-eb19dfc083a71fbf.rmeta: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/iter.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/macros.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/mod.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/fallback.rs
+
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/lib.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/iter.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/macros.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/mod.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/httparse-1.8.0/src/simd/fallback.rs:

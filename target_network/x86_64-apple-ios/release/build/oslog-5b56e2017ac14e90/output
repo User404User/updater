@@ -1,0 +1,50 @@
+TARGET = Some("x86_64-apple-ios")
+OPT_LEVEL = Some("3")
+HOST = Some("aarch64-apple-darwin")
+cargo:rerun-if-env-changed=CC_x86_64-apple-ios
+CC_x86_64-apple-ios = None
+cargo:rerun-if-env-changed=CC_x86_64_apple_ios
+CC_x86_64_apple_ios = None
+cargo:rerun-if-env-changed=TARGET_CC
+TARGET_CC = None
+cargo:rerun-if-env-changed=CC
+CC = None
+cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+CRATE_CC_NO_DEFAULTS = None
+DEBUG = Some("false")
+Detecting iOS SDK path for iphonesimulator
+cargo:rerun-if-env-changed=CFLAGS_x86_64-apple-ios
+CFLAGS_x86_64-apple-ios = None
+cargo:rerun-if-env-changed=CFLAGS_x86_64_apple_ios
+CFLAGS_x86_64_apple_ios = None
+cargo:rerun-if-env-changed=TARGET_CFLAGS
+TARGET_CFLAGS = None
+cargo:rerun-if-env-changed=CFLAGS
+CFLAGS = None
+running: "clang" "-O3" "-fPIC" "--target=x86_64-apple-ios" "-m64" "-mios-simulator-version-min=11.0" "-isysroot" "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.5.sdk" "-fembed-bitcode" "-Wall" "-Wextra" "-o" "/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/build/oslog-5b56e2017ac14e90/out/wrapper.o" "-c" "wrapper.c"
+exit status: 0
+cargo:rerun-if-env-changed=AR_x86_64-apple-ios
+AR_x86_64-apple-ios = None
+cargo:rerun-if-env-changed=AR_x86_64_apple_ios
+AR_x86_64_apple_ios = None
+cargo:rerun-if-env-changed=TARGET_AR
+TARGET_AR = None
+cargo:rerun-if-env-changed=AR
+AR = None
+RUSTC_LINKER = None
+cargo:rerun-if-env-changed=CROSS_COMPILE
+CROSS_COMPILE = None
+cargo:rerun-if-env-changed=ARFLAGS_x86_64-apple-ios
+ARFLAGS_x86_64-apple-ios = None
+cargo:rerun-if-env-changed=ARFLAGS_x86_64_apple_ios
+ARFLAGS_x86_64_apple_ios = None
+cargo:rerun-if-env-changed=TARGET_ARFLAGS
+TARGET_ARFLAGS = None
+cargo:rerun-if-env-changed=ARFLAGS
+ARFLAGS = None
+running: ZERO_AR_DATE="1" "ar" "cq" "/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/build/oslog-5b56e2017ac14e90/out/libwrapper.a" "/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/build/oslog-5b56e2017ac14e90/out/wrapper.o"
+exit status: 0
+running: "ar" "s" "/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/build/oslog-5b56e2017ac14e90/out/libwrapper.a"
+exit status: 0
+cargo:rustc-link-lib=static=wrapper
+cargo:rustc-link-search=native=/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/build/oslog-5b56e2017ac14e90/out

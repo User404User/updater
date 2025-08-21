@@ -1,0 +1,101 @@
+group 'dev.shorebird.code_push_network'
+version '1.0-SNAPSHOT'
+
+buildscript {
+    ext.kotlin_version = '1.7.10'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.3.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    if (project.android.hasProperty("namespace")) {
+        namespace 'dev.shorebird.code_push_network'
+    }
+
+    compileSdkVersion 33
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+        
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++14"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+        
+        ndk {
+            // 指定支持的 ABI
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    packagingOptions {
+        // 确保 .so 文件被正确打包
+        pickFirst '**/libshorebird_updater_network.so'
+    }
+
+    dependencies {
+        testImplementation 'org.jetbrains.kotlin:kotlin-test'
+        testImplementation 'org.mockito:mockito-core:5.0.0'
+    }
+
+    testOptions {
+        unitTests.all {
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
+}
+
+// Copy native libraries to plugin's jniLibs directory
+task copyNativeLibs(type: Copy) {
+    from '../../build_network/android'
+    into 'src/main/jniLibs'
+    include '**/*.so'
+}
+
+// Make sure copyNativeLibs runs before build
+preBuild.dependsOn copyNativeLibs

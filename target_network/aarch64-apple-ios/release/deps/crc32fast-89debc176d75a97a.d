@@ -1,0 +1,11 @@
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/crc32fast-89debc176d75a97a.d: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/baseline.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/combine.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/specialized/mod.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/table.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/libcrc32fast-89debc176d75a97a.rlib: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/baseline.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/combine.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/specialized/mod.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/table.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/libcrc32fast-89debc176d75a97a.rmeta: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/baseline.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/combine.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/specialized/mod.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/table.rs
+
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/lib.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/baseline.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/combine.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/specialized/mod.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crc32fast-1.3.2/src/table.rs:

@@ -1,0 +1,22 @@
+PODS:
+  - Flutter (1.0.0)
+  - shorebird_code_push_network (2.0.4):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - shorebird_code_push_network (from `.symlinks/plugins/shorebird_code_push_network/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  shorebird_code_push_network:
+    :path: ".symlinks/plugins/shorebird_code_push_network/ios"
+
+SPEC CHECKSUMS:
+  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  shorebird_code_push_network: 01104985547a3668e1a175fe957aa7e279116c24
+
+PODFILE CHECKSUM: 819463e6a0290f5a72f145ba7cde16e8b6ef0796
+
+COCOAPODS: 1.15.2

@@ -1,0 +1,40 @@
+name: shorebird_code_push_network
+description: Check for and download Shorebird code push updates from your app.
+version: 2.0.4
+homepage: https://shorebird.dev
+repository: https://github.com/shorebirdtech/updater/tree/main/shorebird_code_push_network
+
+environment:
+  sdk: ">=3.5.4 <4.0.0"
+  flutter: ">=3.24.5"
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.shorebird.code_push_network
+        pluginClass: ShorebirdCodePushNetworkPlugin
+      ios:
+        pluginClass: ShorebirdCodePushNetworkPlugin
+
+dependencies:
+  ffi: ^2.0.2
+  flutter:
+    sdk: flutter
+  meta: ^1.9.1
+  path_provider: ^2.1.1
+
+dev_dependencies:
+  ffigen: ">=8.0.2 <17.0.0"
+  mocktail: ^1.0.0
+  test: ^1.19.2
+  very_good_analysis: ^7.0.0
+
+ffigen:
+  output: "lib/src/generated/updater_bindings.g.dart"
+  name: "UpdaterBindings"
+  headers:
+    entry-points:
+      - "../library_network/include/updater.h"
+  preamble: |
+    // ignore_for_file: unused_element, unused_field

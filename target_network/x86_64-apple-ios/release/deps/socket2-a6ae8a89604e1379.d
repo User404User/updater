@@ -1,0 +1,11 @@
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/deps/socket2-a6ae8a89604e1379.d: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockaddr.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/socket.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockref.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sys/unix.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/deps/libsocket2-a6ae8a89604e1379.rlib: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockaddr.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/socket.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockref.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sys/unix.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/x86_64-apple-ios/release/deps/libsocket2-a6ae8a89604e1379.rmeta: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockaddr.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/socket.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockref.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sys/unix.rs
+
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/lib.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockaddr.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/socket.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sockref.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.5.5/src/sys/unix.rs:

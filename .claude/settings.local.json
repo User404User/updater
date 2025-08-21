@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(mv:*)",
+      "Bash(sed:*)",
+      "Bash(./build_network.sh:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(dart run:*)",
+      "Bash(dart analyze:*)",
+      "Bash(flutter packages:*)",
+      "Bash(flutter build:*)",
+      "Bash(dart:*)",
+      "Bash(flutter run:*)",
+      "Bash(timeout 60 flutter run -d sdk)",
+      "Bash($ANDROID_HOME/emulator/emulator:*)",
+      "Bash(flutter:*)"
+    ],
+    "deny": []
+  }
+}

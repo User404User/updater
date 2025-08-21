@@ -1,0 +1,10 @@
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/rustls_pki_types-0b6b4a0daa300029.d: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/base64.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/server_name.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/pem.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/librustls_pki_types-0b6b4a0daa300029.rlib: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/base64.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/server_name.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/pem.rs
+
+/Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/target_network/aarch64-apple-ios/release/deps/librustls_pki_types-0b6b4a0daa300029.rmeta: /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/lib.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/base64.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/server_name.rs /Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/pem.rs
+
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/lib.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/base64.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/server_name.rs:
+/Users/coco/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-pki-types-1.10.0/src/pem.rs:
