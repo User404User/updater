@@ -182,12 +182,6 @@ pub(crate) fn open_base_lib(apks_dir: &Path, lib_name: &str) -> anyhow::Result<C
 }
 
 pub fn libapp_path_from_settings(original_libapp_paths: &[String]) -> Result<PathBuf, InitError> {
-    // For network library, allow empty paths and create a dummy path
-    if original_libapp_paths.is_empty() {
-        shorebird_debug!("No original_libapp_paths provided, creating dummy path for network library");
-        return Ok(PathBuf::from("/dummy/libapp.so"));
-    }
-    
     // FIXME: This makes the assumption that the last path provided is the full
     // path to the libapp.so file.  This is true for the current engine, but
     // may not be true in the future.  Better would be for the engine to
@@ -198,7 +192,12 @@ pub fn libapp_path_from_settings(original_libapp_paths: &[String]) -> Result<Pat
     // https://github.com/flutter/engine/blob/a7c9cc58a71c5850be0215ab1997db92cc5e8d3e/shell/platform/android/io/flutter/embedding/engine/loader/FlutterLoader.java#L264
     // Which is composed from nativeLibraryDir:
     // https://developer.android.com/reference/android/content/pm/ApplicationInfo#nativeLibraryDir
-    let full_libapp_path = original_libapp_paths.last().unwrap();
+    let full_libapp_path = original_libapp_paths
+        .last()
+        .ok_or(InitError::InvalidArgument(
+            "original_libapp_paths".to_string(),
+            "empty".to_string(),
+        ))?;
     // We could probably use sourceDir instead?
     // https://developer.android.com/reference/android/content/pm/ApplicationInfo#sourceDir
     // and splitSourceDirs (api 21+)

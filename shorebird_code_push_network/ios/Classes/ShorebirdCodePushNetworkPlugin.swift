@@ -10,11 +10,15 @@ func shorebird_current_boot_patch_number_net() -> Int32
 
 public class ShorebirdCodePushNetworkPlugin: NSObject, FlutterPlugin {
   private static var libraryVerified = false
+  private static var libappPathProvider: LibappPathProvider?
   
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "shorebird_code_push_network", binaryMessenger: registrar.messenger())
     let instance = ShorebirdCodePushNetworkPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
+    
+    // Register the libapp path provider
+    libappPathProvider = LibappPathProvider(with: registrar)
     
     // 在插件注册时验证库
     verifyLibrary()

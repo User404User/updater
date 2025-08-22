@@ -131,13 +131,13 @@ dyn_clone::clone_trait_object!(ExternalFileProvider);
 // split APKs in that datadir. On other platforms we just use a path.
 #[cfg(not(any(target_os = "android", test)))]
 fn libapp_path_from_settings(original_libapp_paths: &[String]) -> Result<PathBuf, InitError> {
-    if let Some(first) = original_libapp_paths.first() {
-        Ok(PathBuf::from(first))
-    } else {
-        // For network library, create a dummy path when no paths are provided
-        shorebird_debug!("No original_libapp_paths provided, creating dummy path for network library");
-        Ok(PathBuf::from("/dummy/libapp.so"))
-    }
+    let first = original_libapp_paths
+        .first()
+        .ok_or(InitError::InvalidArgument(
+            "original_libapp_paths".to_string(),
+            "empty".to_string(),
+        ));
+    first.map(PathBuf::from)
 }
 
 pub fn with_state<F, R>(f: F) -> anyhow::Result<R>
@@ -182,11 +182,29 @@ pub fn init(
     use crate::android::libapp_path_from_settings;
 
     init_logging();
+    shorebird_info!("=== Updater Network Init Started ===");
+    shorebird_info!("AppConfig - release_version: {}, app_storage_dir: {}, code_cache_dir: {}", 
+                   app_config.release_version, app_config.app_storage_dir, app_config.code_cache_dir);
+    shorebird_debug!("Original libapp paths: {:?}", app_config.original_libapp_paths);
+    
     let config = YamlConfig::from_yaml(yaml)
         .map_err(|err| InitError::InvalidArgument("yaml".to_string(), err.to_string()))?;
+    shorebird_info!("YAML config parsed - app_id: {}, channel: {:?}, auto_update: {:?}, base_url: {:?}", 
+                   config.app_id, config.channel, config.auto_update, config.base_url);
 
-    let libapp_path = libapp_path_from_settings(&app_config.original_libapp_paths)?;
-    shorebird_debug!("libapp_path: {:?}", libapp_path);
+    // For network library, libapp_path is optional since we don't need the base for patching
+    let libapp_path = match libapp_path_from_settings(&app_config.original_libapp_paths) {
+        Ok(path) => {
+            shorebird_info!("Resolved libapp_path: {:?}", path);
+            path
+        }
+        Err(_) => {
+            shorebird_info!("No libapp_path provided, using dummy path for network library");
+            PathBuf::from("/dummy/libapp.so")
+        }
+    };
+    
+    shorebird_info!("Setting global config...");
     let set_config_result = set_config(
         app_config,
         file_provider,
@@ -198,10 +216,15 @@ pub fn init(
     // set_config will return an error if the config is already initialized. This should not cause
     // init to fail.
     if set_config_result.is_err() {
+        shorebird_warn!("Config already initialized, returning AlreadyInitialized error");
         return Err(InitError::AlreadyInitialized);
     }
 
-    handle_prior_boot_failure_if_necessary()
+    shorebird_info!("Handling prior boot failure if necessary...");
+    let result = handle_prior_boot_failure_if_necessary();
+    
+    shorebird_info!("=== Updater Network Init Completed ===");
+    result
 }
 
 /// If, at initialization time, we detect that we were in the process of booting a patch, report a
@@ -409,16 +432,29 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
 
     let download_dir = PathBuf::from(&config.download_dir);
     let download_path = download_dir.join(patch.number.to_string());
+    
+    shorebird_info!("=== Starting patch download ===");
+    shorebird_info!("Patch number: {}", patch.number);
+    shorebird_info!("Download directory: {:?}", download_dir);
+    shorebird_info!("Download path: {:?}", download_path);
+    
     // Consider supporting allowing the system to download for us (e.g. iOS).
     // Use custom download URL if provided, otherwise use base_url for domain replacement
     let replacement_url = config.download_url.as_deref().or(Some(&config.base_url));
     download_to_path_with_domain_replacement(&config.network_hooks, &patch.download_url, &download_path, replacement_url)?;
-
+    
+    shorebird_info!("=== Starting patch decompression ===");
     let output_path = download_dir.join(format!("{}.full", patch.number));
+    shorebird_info!("Output path: {:?}", output_path);
+    
     let patch_base_rs = patch_base(&config)?;
+    shorebird_info!("Starting inflate process...");
     inflate(&download_path, patch_base_rs, &output_path)?;
+    shorebird_info!("Inflate completed successfully");
 
     // Check the hash before moving into place.
+    shorebird_info!("=== Verifying patch hash ===");
+    shorebird_info!("Expected hash: {}", patch.hash);
     check_hash(&output_path, &patch.hash).with_context(|| {
         format!(
             "This app reports version {}, but the binary is different from \

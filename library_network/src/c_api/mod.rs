@@ -46,6 +46,29 @@ pub struct AppParameters {
     pub code_cache_dir: *const libc::c_char,
 }
 
+/// Extended configuration parameters for the network library
+/// Contains all parameters that were previously obtained from shorebird.yaml
+#[repr(C)]
+pub struct NetworkConfig {
+    /// App ID from shorebird.yaml
+    pub app_id: *const libc::c_char,
+    
+    /// Update channel (e.g., "stable", "beta")
+    pub channel: *const libc::c_char,
+    
+    /// Whether to automatically update
+    pub auto_update: bool,
+    
+    /// Base URL for the Shorebird API
+    pub base_url: *const libc::c_char,
+    
+    /// Optional custom download URL for patches
+    pub download_url: *const libc::c_char,
+    
+    /// Optional patch public key for signature verification
+    pub patch_public_key: *const libc::c_char,
+}
+
 /// An unknown error occurred while updating. The update was not installed.
 /// This is a catch-all for errors that don't fit into the other categories.
 pub const SHOREBIRD_UPDATE_ERROR: i32 = -1;
@@ -170,6 +193,73 @@ pub extern "C" fn shorebird_init(
             Ok(true)
         },
         "initializing updater",
+        false,
+    )
+}
+
+/// Network library specific initialization function
+/// Takes all parameters directly instead of reading from YAML
+#[no_mangle]
+pub extern "C" fn shorebird_init_network(
+    c_params: *const AppParameters,
+    c_network_config: *const NetworkConfig,
+    c_file_callbacks: FileCallbacks,
+) -> bool {
+    log_on_error(
+        || {
+            shorebird_info!("=== Starting shorebird_init_network ===");
+            
+            let config = app_config_from_c(c_params)?;
+            shorebird_info!("App config parsed - release_version: {}, app_storage_dir: {}, code_cache_dir: {}", 
+                           config.release_version, config.app_storage_dir, config.code_cache_dir);
+            
+            let file_provider = Box::new(CFileProvider {
+                file_callbacks: c_file_callbacks,
+            });
+            
+            // Parse network config
+            anyhow::ensure!(
+                !c_network_config.is_null(),
+                "Null network config passed to shorebird_init_network"
+            );
+            let network_config_ref = unsafe { &*c_network_config };
+            
+            // Create YAML config from network parameters
+            let app_id = to_rust(network_config_ref.app_id)?;
+            let channel = to_rust_option(network_config_ref.channel)?;
+            let base_url = to_rust_option(network_config_ref.base_url)?;
+            let patch_public_key = to_rust_option(network_config_ref.patch_public_key)?;
+            
+            shorebird_info!("Network config - app_id: {}, channel: {:?}, auto_update: {}, base_url: {:?}", 
+                           app_id, channel, network_config_ref.auto_update, base_url);
+            
+            let yaml_config = crate::yaml::YamlConfig {
+                app_id: app_id.clone(),
+                channel,
+                auto_update: Some(network_config_ref.auto_update),
+                base_url,
+                patch_public_key,
+            };
+            
+            // Convert to YAML string
+            let yaml_string = serde_yaml::to_string(&yaml_config)?;
+            shorebird_debug!("Generated YAML config:\n{}", yaml_string);
+            
+            // Initialize updater
+            shorebird_info!("Initializing updater core...");
+            updater::init(config, file_provider, &yaml_string)?;
+            
+            // Update download URL if provided
+            if !network_config_ref.download_url.is_null() {
+                let download_url = to_rust_option(network_config_ref.download_url)?;
+                shorebird_info!("Setting download URL: {:?}", download_url);
+                crate::config::update_download_url(download_url)?;
+            }
+            
+            shorebird_info!("=== shorebird_init_network completed successfully ===");
+            Ok(true)
+        },
+        "initializing network updater",
         false,
     )
 }
@@ -369,7 +459,9 @@ pub extern "C" fn shorebird_update_base_url(c_base_url: *const c_char) -> bool {
     log_on_error(
         || {
             let base_url = to_rust(c_base_url)?;
+            shorebird_info!("Updating base URL to: {}", base_url);
             crate::config::update_base_url(base_url)?;
+            shorebird_info!("Base URL updated successfully");
             Ok(true)
         },
         "updating base URL",
@@ -386,11 +478,41 @@ pub extern "C" fn shorebird_update_download_url(c_download_url: *const c_char) -
     log_on_error(
         || {
             let download_url = to_rust_option(c_download_url)?;
+            shorebird_info!("Updating download URL to: {:?}", download_url);
             crate::config::update_download_url(download_url)?;
+            shorebird_info!("Download URL updated successfully");
             Ok(true)
         },
         "updating download URL",
         false,
+    )
+}
+
+/// Get the current app ID.
+/// Returns a C string that must be freed by the caller, or NULL if not initialized.
+#[no_mangle]
+pub extern "C" fn shorebird_get_app_id() -> *mut c_char {
+    log_on_error(
+        || {
+            let app_id = crate::config::get_app_id()?;
+            Ok(CString::new(app_id)?.into_raw())
+        },
+        "getting app ID",
+        std::ptr::null_mut(),
+    )
+}
+
+/// Get the current release version.
+/// Returns a C string that must be freed by the caller, or NULL if not initialized.
+#[no_mangle]
+pub extern "C" fn shorebird_get_release_version() -> *mut c_char {
+    log_on_error(
+        || {
+            let release_version = crate::config::get_release_version()?;
+            Ok(CString::new(release_version)?.into_raw())
+        },
+        "getting release version",
+        std::ptr::null_mut(),
     )
 }
 
@@ -434,31 +556,6 @@ pub extern "C" fn shorebird_report_launch_success() {
     );
 }
 
-/// Get the current app_id if initialized
-#[no_mangle]
-pub extern "C" fn shorebird_get_app_id() -> *mut c_char {
-    log_on_error(
-        || {
-            let app_id = crate::config::get_app_id()?;
-            allocate_c_string(&app_id)
-        },
-        "getting app_id",
-        std::ptr::null_mut(),
-    )
-}
-
-/// Get the current release version if initialized
-#[no_mangle]
-pub extern "C" fn shorebird_get_release_version() -> *mut c_char {
-    log_on_error(
-        || {
-            let release_version = crate::config::get_release_version()?;
-            allocate_c_string(&release_version)
-        },
-        "getting release_version",
-        std::ptr::null_mut(),
-    )
-}
 
 // Network version exports with _net suffix for iOS to avoid symbol conflicts
 // These are conditional exports that only apply when building the network library

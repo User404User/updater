@@ -96,6 +96,37 @@ typedef struct FileCallbacks {
   void (*close)(void *file_handle);
 } FileCallbacks;
 
+/**
+ * Extended configuration parameters for the network library
+ * Contains all parameters that were previously obtained from shorebird.yaml
+ */
+typedef struct NetworkConfig {
+  /**
+   * App ID from shorebird.yaml
+   */
+  const char *app_id;
+  /**
+   * Update channel (e.g., "stable", "beta")
+   */
+  const char *channel;
+  /**
+   * Whether to automatically update
+   */
+  bool auto_update;
+  /**
+   * Base URL for the Shorebird API
+   */
+  const char *base_url;
+  /**
+   * Optional custom download URL for patches
+   */
+  const char *download_url;
+  /**
+   * Optional patch public key for signature verification
+   */
+  const char *patch_public_key;
+} NetworkConfig;
+
 typedef struct UpdateResult {
   int32_t status;
   const char *message;
@@ -115,6 +146,15 @@ SHOREBIRD_EXPORT
 bool shorebird_init(const struct AppParameters *c_params,
                     struct FileCallbacks c_file_callbacks,
                     const char *c_yaml);
+
+/**
+ * Network library specific initialization function
+ * Takes all parameters directly instead of reading from YAML
+ */
+SHOREBIRD_EXPORT
+bool shorebird_init_network(const struct AppParameters *c_params,
+                            const struct NetworkConfig *c_network_config,
+                            struct FileCallbacks c_file_callbacks);
 
 /**
  * Returns if the app should run the updater automatically on launch.
@@ -210,6 +250,20 @@ SHOREBIRD_EXPORT
 bool shorebird_update_download_url(const char *c_download_url);
 
 /**
+ * Get the current app ID.
+ * Returns a C string that must be freed by the caller, or NULL if not initialized.
+ */
+SHOREBIRD_EXPORT
+char *shorebird_get_app_id(void);
+
+/**
+ * Get the current release version.
+ * Returns a C string that must be freed by the caller, or NULL if not initialized.
+ */
+SHOREBIRD_EXPORT
+char *shorebird_get_release_version(void);
+
+/**
  * Tell the updater that we're launching from what it told us was the
  * next patch to boot from. This will copy the next boot patch to be the
  * `current_boot` patch.
@@ -237,16 +291,6 @@ SHOREBIRD_EXPORT void shorebird_report_launch_failure(void);
  * and then marks the launch as successful.  We could do something similar.
  */
 SHOREBIRD_EXPORT void shorebird_report_launch_success(void);
-
-/**
- * Get the current app_id if initialized
- */
-SHOREBIRD_EXPORT char *shorebird_get_app_id(void);
-
-/**
- * Get the current release version if initialized
- */
-SHOREBIRD_EXPORT char *shorebird_get_release_version(void);
 
 SHOREBIRD_EXPORT
 bool shorebird_init_net(const struct AppParameters *c_params,
@@ -279,6 +323,11 @@ void shorebird_free_update_result_net(const struct UpdateResult *result);
 SHOREBIRD_EXPORT void shorebird_start_update_thread_net(void);
 
 SHOREBIRD_EXPORT bool shorebird_update_base_url_net(const char *c_base_url);
+
+SHOREBIRD_EXPORT
+bool shorebird_update_download_url_net(const char *c_download_url);
+
+SHOREBIRD_EXPORT char *shorebird_debug_get_state_net(void);
 
 SHOREBIRD_EXPORT void shorebird_report_launch_start_net(void);
 

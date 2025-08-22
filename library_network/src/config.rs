@@ -166,47 +166,16 @@ pub fn get_release_version() -> Result<String> {
 
 /// Get the correct storage path based on platform
 fn get_platform_storage_path(app_storage_dir: &str) -> PathBuf {
-    #[cfg(target_os = "ios")]
-    {
-        // On iOS, Shorebird uses $HOME/Library/Application Support/shorebird
-        // instead of the app sandbox directory
-        if let Ok(home) = std::env::var("HOME") {
-            let mut path = PathBuf::from(home);
-            path.push("Library");
-            path.push("Application Support");
-            path.push("shorebird");
-            path.push("shorebird_updater");
-            return path;
-        }
-    }
-    
-    // For all other platforms (including Android), use the provided path
-    let mut path = PathBuf::from(app_storage_dir);
-    path.push("shorebird_updater");
-    path
+    // For network library, use the exact path provided by the platform
+    // The platform layer should handle adding any necessary subdirectories
+    PathBuf::from(app_storage_dir)
 }
 
 /// Get the correct cache path based on platform
 fn get_platform_cache_path(code_cache_dir: &str) -> PathBuf {
-    #[cfg(target_os = "ios")]
-    {
-        // On iOS, Shorebird uses the same path for storage and cache
-        if let Ok(home) = std::env::var("HOME") {
-            let mut path = PathBuf::from(home);
-            path.push("Library");
-            path.push("Application Support");
-            path.push("shorebird");
-            path.push("shorebird_updater");
-            path.push("downloads");
-            return path;
-        }
-    }
-    
-    // For all other platforms, use the provided cache directory
-    let mut path = PathBuf::from(code_cache_dir);
-    path.push("shorebird_updater");
-    path.push("downloads");
-    path
+    // For network library, use the exact path provided by the platform
+    // The platform layer should handle adding any necessary subdirectories
+    PathBuf::from(code_cache_dir)
 }
 
 /// Returns Ok if the config was set successfully, Err if it was already set.
@@ -222,15 +191,20 @@ pub fn set_config(
             // This previously returned an error, but this happens regularly
             // with apps that use Firebase Messaging, and logging it as an error
             // has caused confusion.
+            shorebird_warn!("Updater already initialized, ignoring second shorebird_init call.");
             bail!("Updater already initialized, ignoring second shorebird_init call.");
         }
 
         let storage_dir = get_platform_storage_path(&app_config.app_storage_dir);
         let download_dir = get_platform_cache_path(&app_config.code_cache_dir);
+        
+        shorebird_info!("Storage paths resolved:");
+        shorebird_info!("  - storage_dir: {:?}", storage_dir);
+        shorebird_info!("  - download_dir: {:?}", download_dir);
 
         let new_config = UpdateConfig {
-            storage_dir,
-            download_dir,
+            storage_dir: storage_dir.clone(),
+            download_dir: download_dir.clone(),
             channel: yaml
                 .channel
                 .as_deref()
@@ -239,7 +213,7 @@ pub fn set_config(
             auto_update: yaml.auto_update.unwrap_or(true),
             app_id: yaml.app_id.to_string(),
             release_version: app_config.release_version.to_string(),
-            libapp_path,
+            libapp_path: libapp_path.clone(),
             base_url: yaml
                 .base_url
                 .as_deref()
@@ -250,8 +224,18 @@ pub fn set_config(
             file_provider,
             patch_public_key: yaml.patch_public_key.to_owned(),
         };
-        shorebird_debug!("Updater configured with: {:?}", new_config);
+        
+        shorebird_info!("UpdateConfig created:");
+        shorebird_info!("  - app_id: {}", new_config.app_id);
+        shorebird_info!("  - release_version: {}", new_config.release_version);
+        shorebird_info!("  - channel: {}", new_config.channel);
+        shorebird_info!("  - auto_update: {}", new_config.auto_update);
+        shorebird_info!("  - base_url: {}", new_config.base_url);
+        shorebird_info!("  - libapp_path: {:?}", new_config.libapp_path);
+        shorebird_debug!("Full config: {:?}", new_config);
+        
         *config = Some(new_config);
+        shorebird_info!("Config set successfully!");
 
         Ok(())
     })

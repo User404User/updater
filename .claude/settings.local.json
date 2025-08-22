@@ -21,7 +21,11 @@
       "Bash(adb logcat:*)",
       "Bash(adb:*)",
       "Bash(find:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(cargo:*)",
+      "Bash(cbindgen:*)",
+      "Bash(rg:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

@@ -14,6 +14,7 @@ class ShorebirdCodePushNetworkPlugin: FlutterPlugin, MethodCallHandler {
   /// This local reference serves to register the plugin with the Flutter Engine and unregister it
   /// when the Flutter Engine is detached from the Activity
   private lateinit var channel : MethodChannel
+  private lateinit var libappPathProvider: LibappPathProvider
   
   companion object {
     private var libraryLoaded = false
@@ -50,6 +51,11 @@ class ShorebirdCodePushNetworkPlugin: FlutterPlugin, MethodCallHandler {
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "shorebird_code_push_network")
     channel.setMethodCallHandler(this)
+    
+    // Register the libapp path provider
+    libappPathProvider = LibappPathProvider(flutterPluginBinding.applicationContext)
+    val libappChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "dev.shorebird.code_push_network/libapp")
+    libappChannel.setMethodCallHandler(libappPathProvider)
     
     // Try to load library again if not already loaded
     if (!libraryLoaded) {

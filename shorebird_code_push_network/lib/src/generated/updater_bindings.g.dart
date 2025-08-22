@@ -2375,6 +2375,30 @@ class UpdaterBindings {
       bool Function(
           ffi.Pointer<AppParameters>, FileCallbacks, ffi.Pointer<ffi.Char>)>();
 
+  /// Network library specific initialization function
+  /// Takes all parameters directly instead of reading from YAML
+  bool shorebird_init_network(
+    ffi.Pointer<AppParameters> c_params,
+    ffi.Pointer<NetworkConfig> c_network_config,
+    FileCallbacks c_file_callbacks,
+  ) {
+    return _shorebird_init_network(
+      c_params,
+      c_network_config,
+      c_file_callbacks,
+    );
+  }
+
+  late final _shorebird_init_networkPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Bool Function(
+              ffi.Pointer<AppParameters>,
+              ffi.Pointer<NetworkConfig>,
+              FileCallbacks)>>('shorebird_init_network');
+  late final _shorebird_init_network = _shorebird_init_networkPtr.asFunction<
+      bool Function(ffi.Pointer<AppParameters>, ffi.Pointer<NetworkConfig>,
+          FileCallbacks)>();
+
   /// Returns if the app should run the updater automatically on launch.
   bool shorebird_should_auto_update() {
     return _shorebird_should_auto_update();
@@ -2576,6 +2600,30 @@ class UpdaterBindings {
   late final _shorebird_update_download_url = _shorebird_update_download_urlPtr
       .asFunction<bool Function(ffi.Pointer<ffi.Char>)>();
 
+  /// Get the current app ID.
+  /// Returns a C string that must be freed by the caller, or NULL if not initialized.
+  ffi.Pointer<ffi.Char> shorebird_get_app_id() {
+    return _shorebird_get_app_id();
+  }
+
+  late final _shorebird_get_app_idPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+          'shorebird_get_app_id');
+  late final _shorebird_get_app_id =
+      _shorebird_get_app_idPtr.asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  /// Get the current release version.
+  /// Returns a C string that must be freed by the caller, or NULL if not initialized.
+  ffi.Pointer<ffi.Char> shorebird_get_release_version() {
+    return _shorebird_get_release_version();
+  }
+
+  late final _shorebird_get_release_versionPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+          'shorebird_get_release_version');
+  late final _shorebird_get_release_version = _shorebird_get_release_versionPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function()>();
+
   /// Tell the updater that we're launching from what it told us was the
   /// next patch to boot from. This will copy the next boot patch to be the
   /// `current_boot` patch.
@@ -2622,28 +2670,6 @@ class UpdaterBindings {
           'shorebird_report_launch_success');
   late final _shorebird_report_launch_success =
       _shorebird_report_launch_successPtr.asFunction<void Function()>();
-
-  /// Get the current app_id if initialized
-  ffi.Pointer<ffi.Char> shorebird_get_app_id() {
-    return _shorebird_get_app_id();
-  }
-
-  late final _shorebird_get_app_idPtr =
-      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
-          'shorebird_get_app_id');
-  late final _shorebird_get_app_id =
-      _shorebird_get_app_idPtr.asFunction<ffi.Pointer<ffi.Char> Function()>();
-
-  /// Get the current release version if initialized
-  ffi.Pointer<ffi.Char> shorebird_get_release_version() {
-    return _shorebird_get_release_version();
-  }
-
-  late final _shorebird_get_release_versionPtr =
-      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
-          'shorebird_get_release_version');
-  late final _shorebird_get_release_version = _shorebird_get_release_versionPtr
-      .asFunction<ffi.Pointer<ffi.Char> Function()>();
 
   bool shorebird_init_net(
     ffi.Pointer<AppParameters> c_params,
@@ -4240,6 +4266,29 @@ final class FileCallbacks extends ffi.Struct {
           ffi
           .NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void> file_handle)>>
       close;
+}
+
+/// Extended configuration parameters for the network library
+/// Contains all parameters that were previously obtained from shorebird.yaml
+final class NetworkConfig extends ffi.Struct {
+  /// App ID from shorebird.yaml
+  external ffi.Pointer<ffi.Char> app_id;
+
+  /// Update channel (e.g., "stable", "beta")
+  external ffi.Pointer<ffi.Char> channel;
+
+  /// Whether to automatically update
+  @ffi.Bool()
+  external bool auto_update;
+
+  /// Base URL for the Shorebird API
+  external ffi.Pointer<ffi.Char> base_url;
+
+  /// Optional custom download URL for patches
+  external ffi.Pointer<ffi.Char> download_url;
+
+  /// Optional patch public key for signature verification
+  external ffi.Pointer<ffi.Char> patch_public_key;
 }
 
 final class UpdateResult extends ffi.Struct {

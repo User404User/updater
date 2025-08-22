@@ -57,29 +57,51 @@ class NetworkUpdaterInitializer {
       debugPrint('Initializing network updater...');
       
       // Get platform-specific directories
-      final appDir = await getApplicationDocumentsDirectory();
-      final cacheDir = await getTemporaryDirectory();
+      // Get storage paths from native platform
+      final storagePaths = await LibappPathHelper.getStoragePaths();
       
-      debugPrint('App storage dir: ${appDir.path}');
-      debugPrint('Cache dir: ${cacheDir.path}');
+      String appStorageDir;
+      String codeCacheDir;
       
-      // Create directories if they don't exist
-      final patchesDir = Directory('${appDir.path}/patches');
-      if (!await patchesDir.exists()) {
-        await patchesDir.create(recursive: true);
-        debugPrint('Created patches directory');
+      if (storagePaths != null) {
+        // Use native-provided paths
+        appStorageDir = storagePaths['appStorageDir']!;
+        codeCacheDir = storagePaths['codeCacheDir']!;
+        debugPrint('Using native storage paths');
+      } else {
+        // Fallback to path_provider
+        final appDir = await getApplicationDocumentsDirectory();
+        final cacheDir = await getTemporaryDirectory();
+        appStorageDir = appDir.path;
+        codeCacheDir = cacheDir.path;
+        debugPrint('Using path_provider paths (fallback)');
       }
       
-      final downloadsDir = Directory('${cacheDir.path}/downloads');
-      if (!await downloadsDir.exists()) {
-        await downloadsDir.create(recursive: true);
-        debugPrint('Created downloads directory');
+      // Match the original updater directory structure
+      // storage_dir = app_storage_dir (no suffix)
+      // download_dir = code_cache_dir + /downloads
+      final downloadDir = '$codeCacheDir/downloads';
+      
+      debugPrint('App storage dir: $appStorageDir');
+      debugPrint('Download dir: $downloadDir');
+      
+      // Create directories if they don't exist
+      final storageDir = Directory(appStorageDir);
+      if (!await storageDir.exists()) {
+        await storageDir.create(recursive: true);
+        debugPrint('Created storage directory');
+      }
+      
+      final downloadDirectory = Directory(downloadDir);
+      if (!await downloadDirectory.exists()) {
+        await downloadDirectory.create(recursive: true);
+        debugPrint('Created download directory');
       }
       
       // Initialize the native library
       final result = _initializeNative(
-        appStorageDir: appDir.path,
-        codeCacheDir: cacheDir.path,
+        appStorageDir: appStorageDir,
+        codeCacheDir: downloadDir,
         config: config,
       );
       
@@ -118,8 +140,17 @@ class NetworkUpdaterInitializer {
   }) {
     final bindings = UpdaterNetwork.networkBindings;
     
+    debugPrint('[NetworkUpdater] Starting native initialization...');
+    debugPrint('[NetworkUpdater] App ID: ${config.appId}');
+    debugPrint('[NetworkUpdater] Release version: ${config.releaseVersion}');
+    debugPrint('[NetworkUpdater] Channel: ${config.channel}');
+    debugPrint('[NetworkUpdater] Auto update: ${config.autoUpdate}');
+    debugPrint('[NetworkUpdater] Base URL: ${config.baseUrl ?? 'default'}');
+    debugPrint('[NetworkUpdater] Download URL: ${config.downloadUrl ?? 'none'}');
+    
     // Allocate memory for parameters
     final appParams = malloc<AppParameters>();
+    final networkConfig = malloc<NetworkConfig>();
     final releaseVersionPtr = config.releaseVersion.toNativeUtf8().cast<Char>();
     final appStorageDirPtr = appStorageDir.toNativeUtf8().cast<Char>();
     final codeCacheDirPtr = codeCacheDir.toNativeUtf8().cast<Char>();
@@ -129,11 +160,12 @@ class NetworkUpdaterInitializer {
     appParams.ref.app_storage_dir = appStorageDirPtr;
     appParams.ref.code_cache_dir = codeCacheDirPtr;
     
-    // Handle original libapp paths - for network library, let Rust handle empty paths
+    // Handle original libapp paths
     Pointer<Pointer<Char>>? libappPathsPtr;
     List<Pointer<Utf8>> allocatedPaths = [];
     
     if (config.originalLibappPaths != null && config.originalLibappPaths!.isNotEmpty) {
+      debugPrint('[NetworkUpdater] Setting up libapp paths: ${config.originalLibappPaths}');
       libappPathsPtr = malloc<Pointer<Char>>(config.originalLibappPaths!.length);
       for (int i = 0; i < config.originalLibappPaths!.length; i++) {
         final pathPtr = config.originalLibappPaths![i].toNativeUtf8();
@@ -143,45 +175,70 @@ class NetworkUpdaterInitializer {
       appParams.ref.original_libapp_paths = libappPathsPtr.cast<Pointer<Char>>();
       appParams.ref.original_libapp_paths_size = config.originalLibappPaths!.length;
     } else {
-      // For network library, pass empty array and let Rust handle it
+      debugPrint('[NetworkUpdater] No libapp paths provided');
       appParams.ref.original_libapp_paths = nullptr;
       appParams.ref.original_libapp_paths_size = 0;
     }
     
+    // Set up network config
+    final appIdPtr = config.appId.toNativeUtf8().cast<Char>();
+    final channelPtr = config.channel.toNativeUtf8().cast<Char>();
+    final baseUrlPtr = config.baseUrl?.toNativeUtf8().cast<Char>() ?? nullptr;
+    final downloadUrlPtr = config.downloadUrl?.toNativeUtf8().cast<Char>() ?? nullptr;
+    
+    networkConfig.ref.app_id = appIdPtr;
+    networkConfig.ref.channel = channelPtr;
+    networkConfig.ref.auto_update = config.autoUpdate;
+    networkConfig.ref.base_url = baseUrlPtr ?? 'https://api.shorebird.dev'.toNativeUtf8().cast<Char>();
+    networkConfig.ref.download_url = downloadUrlPtr;
+    networkConfig.ref.patch_public_key = nullptr; // TODO: Add support for patch public key
+    
     // Create file callbacks
     final fileCallbacks = _createFileCallbacks();
     
-    // Create YAML configuration
-    final yamlConfig = '''
-app_id: "${config.appId}"
-channel: "${config.channel}"
-auto_update: ${config.autoUpdate}
-${config.baseUrl != null ? 'base_url: "${config.baseUrl}"' : ''}
-''';
-    
-    debugPrint('YAML config:\n$yamlConfig');
-    
-    final yamlPtr = yamlConfig.toNativeUtf8().cast<Char>();
-    
     try {
       // Call initialization function
-      bool result;
-      if (Platform.isIOS) {
-        result = bindings.shorebird_init_net(appParams, fileCallbacks, yamlPtr);
-      } else {
-        result = bindings.shorebird_init(appParams, fileCallbacks, yamlPtr);
+      debugPrint('[NetworkUpdater] Calling shorebird_init_network...');
+      final result = bindings.shorebird_init_network(appParams, networkConfig, fileCallbacks);
+      
+      debugPrint('[NetworkUpdater] Native init result: $result');
+      
+      if (result) {
+        // Verify initialization by getting app ID
+        final appIdResult = bindings.shorebird_get_app_id();
+        if (appIdResult != nullptr) {
+          final appId = appIdResult.cast<Utf8>().toDartString();
+          debugPrint('[NetworkUpdater] Verified app ID: $appId');
+          bindings.shorebird_free_string(appIdResult);
+        }
+        
+        // Get release version
+        final versionResult = bindings.shorebird_get_release_version();
+        if (versionResult != nullptr) {
+          final version = versionResult.cast<Utf8>().toDartString();
+          debugPrint('[NetworkUpdater] Verified release version: $version');
+          bindings.shorebird_free_string(versionResult);
+        }
       }
       
-      debugPrint('Native init result: $result');
       return result;
       
     } finally {
       // Clean up allocated memory
+      debugPrint('[NetworkUpdater] Cleaning up allocated memory...');
       malloc.free(appParams);
+      malloc.free(networkConfig);
       malloc.free(releaseVersionPtr);
       malloc.free(appStorageDirPtr);
       malloc.free(codeCacheDirPtr);
-      malloc.free(yamlPtr);
+      malloc.free(appIdPtr);
+      malloc.free(channelPtr);
+      if (baseUrlPtr != nullptr && config.baseUrl != null) {
+        malloc.free(baseUrlPtr);
+      }
+      if (downloadUrlPtr != nullptr) {
+        malloc.free(downloadUrlPtr);
+      }
       
       if (libappPathsPtr != null) {
         malloc.free(libappPathsPtr);
