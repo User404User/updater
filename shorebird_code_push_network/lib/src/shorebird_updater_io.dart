@@ -145,6 +145,18 @@ Please upgrade the Shorebird Engine for improved error messages.''',
     if (!_isAvailable) return false;
     return _updater.updateBaseUrl(baseUrl);
   }
+  
+  @override
+  bool updateDownloadUrl(String? downloadUrl) {
+    if (!_isAvailable) return false;
+    // Check if the underlying updater is UpdaterNetwork which supports this method
+    final updater = _updater;
+    if (updater is UpdaterNetwork) {
+      return updater.updateDownloadUrl(downloadUrl);
+    }
+    // For non-network updaters, return false
+    return false;
+  }
 }
 
 extension on int {

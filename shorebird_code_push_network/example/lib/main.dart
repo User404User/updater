@@ -119,6 +119,9 @@ class _MyHomePageState extends State<MyHomePage> {
         releaseVersion: '1.0.0+1',
         channel: 'stable',
         autoUpdate: false,
+        // 可选：设置自定义 API 和下载 URL
+        // baseUrl: 'https://api.example.com',
+        // downloadUrl: 'https://download.example.com',
       );
       
       _updater = await UpdaterNetwork.createAndInitialize(config);
@@ -387,6 +390,41 @@ class _MyHomePageState extends State<MyHomePage> {
           ElevatedButton(
             onPressed: _testUpdateBaseUrl,
             child: const Text('Test updateBaseUrl'),
+          ),
+          const SizedBox(height: 8),
+          // 测试下载 URL 功能
+          ElevatedButton(
+            onPressed: _updater == null ? null : () {
+              final updaterNetwork = _updater;
+              if (updaterNetwork != null) {
+                final success = updaterNetwork.updateDownloadUrl('https://custom-download.example.com');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success 
+                      ? 'Download URL updated to custom domain' 
+                      : 'Failed to update download URL'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Set Custom Download URL'),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: _updater == null ? null : () {
+              final updaterNetwork = _updater;
+              if (updaterNetwork != null) {
+                final success = updaterNetwork.updateDownloadUrl(null);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success 
+                      ? 'Download URL cleared (using base URL)' 
+                      : 'Failed to clear download URL'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Clear Download URL'),
           ),
           const SizedBox(height: 8),
           ElevatedButton.icon(

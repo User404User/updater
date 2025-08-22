@@ -24,6 +24,10 @@ class NetworkUpdaterConfig {
   /// Base URL for the API (can be changed later with updateBaseUrl)
   final String? baseUrl;
   
+  /// Download URL for patches (can be changed later with updateDownloadUrl)
+  /// If not provided, base URL will be used for domain replacement
+  final String? downloadUrl;
+  
   /// Optional paths to the original libapp.so files
   final List<String>? originalLibappPaths;
 
@@ -33,6 +37,7 @@ class NetworkUpdaterConfig {
     this.channel = 'stable',
     this.autoUpdate = false,
     this.baseUrl,
+    this.downloadUrl,
     this.originalLibappPaths,
   });
 }
@@ -81,6 +86,18 @@ class NetworkUpdaterInitializer {
       if (result) {
         _initialized = true;
         debugPrint('Network updater initialized successfully');
+        
+        // Set download URL if provided
+        if (config.downloadUrl != null) {
+          final bindings = UpdaterNetwork.networkBindings;
+          final downloadUrlPtr = config.downloadUrl!.toNativeUtf8().cast<Char>();
+          try {
+            final urlResult = bindings.shorebird_update_download_url(downloadUrlPtr);
+            debugPrint('Download URL update result: $urlResult');
+          } finally {
+            malloc.free(downloadUrlPtr);
+          }
+        }
       } else {
         debugPrint('Failed to initialize network updater');
       }

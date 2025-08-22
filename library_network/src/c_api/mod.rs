@@ -377,6 +377,23 @@ pub extern "C" fn shorebird_update_base_url(c_base_url: *const c_char) -> bool {
     )
 }
 
+/// Update the download URL for patches.
+/// The download_url parameter must be a valid URL string (e.g., "https://download.example.com").
+/// Pass NULL to clear the custom download URL and revert to using base_url.
+/// Returns true if the download URL was updated successfully, false otherwise.
+#[no_mangle]
+pub extern "C" fn shorebird_update_download_url(c_download_url: *const c_char) -> bool {
+    log_on_error(
+        || {
+            let download_url = to_rust_option(c_download_url)?;
+            crate::config::update_download_url(download_url)?;
+            Ok(true)
+        },
+        "updating download URL",
+        false,
+    )
+}
+
 /// Tell the updater that we're launching from what it told us was the
 /// next patch to boot from. This will copy the next boot patch to be the
 /// `current_boot` patch.
@@ -516,6 +533,16 @@ mod network_exports {
     #[no_mangle]
     pub extern "C" fn shorebird_update_base_url_net(c_base_url: *const c_char) -> bool {
         super::shorebird_update_base_url(c_base_url)
+    }
+    
+    #[no_mangle]
+    pub extern "C" fn shorebird_update_download_url_net(c_download_url: *const c_char) -> bool {
+        super::shorebird_update_download_url(c_download_url)
+    }
+    
+    #[no_mangle]
+    pub extern "C" fn shorebird_debug_get_state_net() -> *mut c_char {
+        super::shorebird_debug_get_state()
     }
     
     #[no_mangle]

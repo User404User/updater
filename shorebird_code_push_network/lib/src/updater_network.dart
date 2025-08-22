@@ -289,6 +289,48 @@ class UpdaterNetwork extends Updater {
     }
   }
   
+  /// Update the download URL for patches.
+  /// Pass null to clear the custom download URL and revert to using base_url.
+  bool updateDownloadUrl(String? downloadUrl) {
+    debugPrint('UpdaterNetwork.updateDownloadUrl called with: $downloadUrl');
+    
+    if (downloadUrl == null) {
+      // Pass null pointer to clear the download URL
+      bool result;
+      if (Platform.isIOS) {
+        result = networkBindings.shorebird_update_download_url_net(nullptr);
+      } else {
+        result = networkBindings.shorebird_update_download_url(nullptr);
+      }
+      debugPrint('updateDownloadUrl (clear) result: $result');
+      return result;
+    }
+    
+    final urlPtr = downloadUrl.toNativeUtf8().cast<Char>();
+    
+    try {
+      bool result;
+      if (Platform.isIOS) {
+        debugPrint('Calling iOS function: shorebird_update_download_url_net');
+        result = networkBindings.shorebird_update_download_url_net(urlPtr);
+      } else {
+        debugPrint('Calling Android function: shorebird_update_download_url');
+        result = networkBindings.shorebird_update_download_url(urlPtr);
+      }
+      
+      debugPrint('updateDownloadUrl result: $result');
+      
+      // 释放内存
+      malloc.free(urlPtr);
+      
+      return result;
+    } catch (e) {
+      debugPrint('ERROR in updateDownloadUrl: $e');
+      malloc.free(urlPtr);
+      rethrow;
+    }
+  }
+  
   /// Get the current app_id from the network library
   String getAppId() {
     debugPrint('Getting app_id from network library...');

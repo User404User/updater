@@ -253,8 +253,14 @@ pub fn download_to_path_with_domain_replacement(
     path: &Path,
     base_url: Option<&str>,
 ) -> anyhow::Result<()> {
+    // Only replace domain if base_url is provided and not empty
     let actual_url = if let Some(base) = base_url {
-        replace_download_url_domain(url, base)?
+        if base.trim().is_empty() {
+            // Base URL is empty, use original URL
+            url.to_string()
+        } else {
+            replace_download_url_domain(url, base)?
+        }
     } else {
         url.to_string()
     };

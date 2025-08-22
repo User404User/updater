@@ -86,6 +86,13 @@ class ShorebirdCodePushNetwork {
   static bool updateBaseUrl(String baseUrl) {
     return _updater.updateBaseUrl(baseUrl);
   }
+  
+  /// 更新补丁下载 URL
+  /// 传入 null 以清除自定义下载 URL 并恢复使用 baseUrl
+  static bool updateDownloadUrl(String? downloadUrl) {
+    final updaterNetwork = (_updater as ShorebirdUpdaterImpl).updater as UpdaterNetwork;
+    return updaterNetwork.updateDownloadUrl(downloadUrl);
+  }
 
   /// 获取当前补丁信息
   static Future<Patch?> getCurrentPatch() async {

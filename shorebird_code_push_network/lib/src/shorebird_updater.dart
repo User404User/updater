@@ -161,6 +161,17 @@ abstract class ShorebirdUpdater {
   /// Returns true if the base URL was updated successfully, false otherwise.
   /// Returns false if the updater is not available.
   bool updateBaseUrl(String baseUrl);
+  
+  /// Update the download URL for patches.
+  /// The download_url parameter must be a valid URL string (e.g., "https://download.example.com").
+  /// Pass null to clear the custom download URL and revert to using base_url.
+  /// Returns true if the download URL was updated successfully, false otherwise.
+  /// Returns false if the updater is not available.
+  /// Note: This method is only available in the network version of the updater.
+  bool updateDownloadUrl(String? downloadUrl) {
+    // Default implementation returns false
+    return false;
+  }
 }
 
 /// A track to check for updates on.

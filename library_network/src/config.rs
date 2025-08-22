@@ -82,6 +82,7 @@ pub struct UpdateConfig {
     pub release_version: String,
     pub libapp_path: PathBuf,
     pub base_url: String,
+    pub download_url: Option<String>, // Optional custom download URL for patches
     pub network_hooks: NetworkHooks,
     pub file_provider: Box<dyn ExternalFileProvider>,
     pub patch_public_key: Option<String>,
@@ -91,8 +92,13 @@ pub struct UpdateConfig {
 pub fn update_base_url(new_base_url: String) -> Result<()> {
     with_config_mut(|config: &mut Option<UpdateConfig>| {
         if let Some(ref mut update_config) = config {
-            update_config.base_url = new_base_url.clone();
-            shorebird_debug!("Base URL updated to: {}", update_config.base_url);
+            // Only update if not empty
+            if !new_base_url.trim().is_empty() {
+                update_config.base_url = new_base_url.clone();
+                shorebird_debug!("Base URL updated to: {}", update_config.base_url);
+            } else {
+                shorebird_debug!("Base URL update skipped: empty string provided");
+            }
             Ok(())
         } else {
             // For network library, allow setting base URL even without full initialization
@@ -100,6 +106,29 @@ pub fn update_base_url(new_base_url: String) -> Result<()> {
             shorebird_debug!("Base URL would be: {}", new_base_url);
             // Store the URL for later use when initialized
             // For now, just return success to indicate the network library is working
+            Ok(())
+        }
+    })
+}
+
+/// Update the download URL for patches in the existing config
+pub fn update_download_url(new_download_url: Option<String>) -> Result<()> {
+    with_config_mut(|config: &mut Option<UpdateConfig>| {
+        if let Some(ref mut update_config) = config {
+            // Filter out empty strings - treat them as None
+            let filtered_url = new_download_url.and_then(|url| {
+                if url.trim().is_empty() {
+                    None
+                } else {
+                    Some(url)
+                }
+            });
+            update_config.download_url = filtered_url.clone();
+            shorebird_debug!("Download URL updated to: {:?}", update_config.download_url);
+            Ok(())
+        } else {
+            shorebird_debug!("Network library: allowing download URL update without full initialization");
+            shorebird_debug!("Download URL would be: {:?}", new_download_url);
             Ok(())
         }
     })
@@ -216,6 +245,7 @@ pub fn set_config(
                 .as_deref()
                 .unwrap_or(DEFAULT_BASE_URL)
                 .to_owned(),
+            download_url: None, // Initially no custom download URL
             network_hooks,
             file_provider,
             patch_public_key: yaml.patch_public_key.to_owned(),

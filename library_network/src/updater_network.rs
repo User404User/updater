@@ -410,7 +410,9 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
     let download_dir = PathBuf::from(&config.download_dir);
     let download_path = download_dir.join(patch.number.to_string());
     // Consider supporting allowing the system to download for us (e.g. iOS).
-    download_to_path_with_domain_replacement(&config.network_hooks, &patch.download_url, &download_path, Some(&config.base_url))?;
+    // Use custom download URL if provided, otherwise use base_url for domain replacement
+    let replacement_url = config.download_url.as_deref().or(Some(&config.base_url));
+    download_to_path_with_domain_replacement(&config.network_hooks, &patch.download_url, &download_path, replacement_url)?;
 
     let output_path = download_dir.join(format!("{}.full", patch.number));
     let patch_base_rs = patch_base(&config)?;

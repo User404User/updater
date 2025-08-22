@@ -183,6 +183,11 @@ SHOREBIRD_EXPORT
 const struct UpdateResult *shorebird_update_with_result(const char *c_channel);
 
 /**
+ * Get debug information about the current updater state
+ */
+SHOREBIRD_EXPORT char *shorebird_debug_get_state(void);
+
+/**
  * Start a thread to download an update if one is available.
  */
 SHOREBIRD_EXPORT void shorebird_start_update_thread(void);
@@ -194,6 +199,15 @@ SHOREBIRD_EXPORT void shorebird_start_update_thread(void);
  */
 SHOREBIRD_EXPORT
 bool shorebird_update_base_url(const char *c_base_url);
+
+/**
+ * Update the download URL for patches.
+ * The download_url parameter must be a valid URL string (e.g., "https://download.example.com").
+ * Pass NULL to clear the custom download URL and revert to using base_url.
+ * Returns true if the download URL was updated successfully, false otherwise.
+ */
+SHOREBIRD_EXPORT
+bool shorebird_update_download_url(const char *c_download_url);
 
 /**
  * Tell the updater that we're launching from what it told us was the

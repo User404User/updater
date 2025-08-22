@@ -19,7 +19,8 @@
       "Bash(cargo build:*)",
       "Bash(grep:*)",
       "Bash(adb logcat:*)",
-      "Bash(adb:*)"
+      "Bash(adb:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }
