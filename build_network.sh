@@ -31,15 +31,50 @@ log_error() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIBRARY_DIR="$SCRIPT_DIR/library_network"
 OUTPUT_DIR="$SCRIPT_DIR/build_network"
+PLUGIN_DIR="$SCRIPT_DIR/shorebird_code_push_network"
+CARGO_TARGET_DIR="$SCRIPT_DIR/target_network"
 
 log_info "🚀 开始构建 Shorebird Network Updater..."
 log_info "项目目录: $LIBRARY_DIR"
 log_info "输出目录: $OUTPUT_DIR"
 
-# 清理旧的构建
+# 🧹 清理所有目标文件 - 确保干净的构建环境
+log_info "🧹 清理构建环境..."
+
+# 1. 清理构建输出目录
+log_info "   清理构建输出目录: $OUTPUT_DIR"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/android"
 mkdir -p "$OUTPUT_DIR/ios"
+
+# 2. 清理 Flutter 插件的 Android jniLibs 目录
+ANDROID_JNILIBS_DIR="$PLUGIN_DIR/android/src/main/jniLibs"
+if [ -d "$ANDROID_JNILIBS_DIR" ]; then
+    log_info "   清理 Android jniLibs 目录: $ANDROID_JNILIBS_DIR"
+    rm -rf "$ANDROID_JNILIBS_DIR"/*
+    # 重建架构目录结构
+    mkdir -p "$ANDROID_JNILIBS_DIR/arm64-v8a"
+    mkdir -p "$ANDROID_JNILIBS_DIR/armeabi-v7a"
+    mkdir -p "$ANDROID_JNILIBS_DIR/x86_64"
+    mkdir -p "$ANDROID_JNILIBS_DIR/x86"
+fi
+
+# 3. 清理 Flutter 插件的 iOS 目录中的库文件
+IOS_PLUGIN_DIR="$PLUGIN_DIR/ios"
+if [ -d "$IOS_PLUGIN_DIR" ]; then
+    log_info "   清理 iOS 插件目录中的库文件: $IOS_PLUGIN_DIR"
+    # 删除旧的静态库文件
+    rm -f "$IOS_PLUGIN_DIR"/libshorebird_updater_network*.a
+    rm -f "$IOS_PLUGIN_DIR/shorebird_updater_network.h"
+    # 删除旧的 XCFramework
+    rm -rf "$IOS_PLUGIN_DIR/ShorebirdUpdaterNetwork.xcframework"
+fi
+
+# 4. 清理 Rust 构建缓存
+log_info "   清理 Rust 构建缓存: $CARGO_TARGET_DIR"
+rm -rf "$CARGO_TARGET_DIR"
+
+log_success "✓ 构建环境清理完成"
 
 cd "$LIBRARY_DIR"
 
@@ -96,7 +131,7 @@ cp Cargo_network.toml Cargo.toml
 
 # 构建 Android
 log_info "🤖 构建 Android 网络库..."
-export CARGO_TARGET_DIR="$SCRIPT_DIR/target_network"
+export CARGO_TARGET_DIR
 
 # Android 架构映射函数
 get_android_arch() {
@@ -289,7 +324,6 @@ rm -f Cargo_network.toml
 
 # 复制构建产物到 Flutter 插件目录
 log_info "📋 复制文件到 Flutter 插件..."
-PLUGIN_DIR="$SCRIPT_DIR/shorebird_code_push_network"
 
 # 复制 Android 库
 if [ -d "$OUTPUT_DIR/android" ]; then

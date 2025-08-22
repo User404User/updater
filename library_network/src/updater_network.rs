@@ -572,6 +572,14 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
     // This makes it so we never try to write to the UpdateState file from
     // two threads at once. We could give UpdateState its own lock instead.
     shorebird_info!("=== Installing patch to final location ===");
+    
+    // Get storage directory before acquiring state lock to avoid nested locking
+    let storage_dir = with_config(|c| Ok(c.storage_dir.clone()))?;
+    let expected_final_path = storage_dir
+        .join("patches")
+        .join(patch.number.to_string())
+        .join("dlc.vmcode");
+    
     with_mut_state(|state| {
         let patch_info = PatchInfo {
             path: output_path,
@@ -581,13 +589,6 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
         shorebird_info!("Installing patch:");
         shorebird_info!("  - Patch number: {}", patch.number);
         shorebird_info!("  - Source path: {:?}", patch_info.path);
-        
-        // Get expected final path
-        let storage_dir = with_config(|c| Ok(c.storage_dir.clone()))?;
-        let expected_final_path = storage_dir
-            .join("patches")
-            .join(patch.number.to_string())
-            .join("dlc.vmcode");
         shorebird_info!("  - Expected final path: {:?}", expected_final_path);
         
         // Move/state update should be "atomic" (it isn't today).
@@ -608,19 +609,22 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
             patch.number
         );
 
-        std::thread::spawn(move || {
-            let event = PatchEvent::new(&config, EventType::PatchDownload, patch.number, None);
-            let report_result = network::send_patch_event(event, &config);
-            if let Err(err) = report_result {
-                shorebird_error!("Failed to report patch download: {:?}", err);
-            }
-        });
-
         // Should set some state to say the status is "update required" and that
         // we now have a different "next" version of the app from the current
         // booted version (patched or not).
         Ok(UpdateStatus::UpdateInstalled)
-    })
+    })?;
+
+    // Report patch download in background thread after state update
+    std::thread::spawn(move || {
+        let event = PatchEvent::new(&config, EventType::PatchDownload, patch.number, None);
+        let report_result = network::send_patch_event(event, &config);
+        if let Err(err) = report_result {
+            shorebird_error!("Failed to report patch download: {:?}", err);
+        }
+    });
+
+    Ok(UpdateStatus::UpdateInstalled)
 }
 
 fn roll_back_patches_if_needed(patch_numbers: Vec<usize>) -> anyhow::Result<()> {

@@ -361,7 +361,14 @@ impl ManagePatches for PatchManager {
             .with_context(|| format!("create_dir_all failed for {}", patch_dir.display()))?;
 
         shorebird_info!("Moving patch file to final location...");
-        std::fs::rename(file_path, &patch_path)?;
+        // 使用 copy + remove 替代 rename 避免跨文件系统问题
+        shorebird_info!("从 {:?} 复制到 {:?}", file_path, patch_path);
+        std::fs::copy(file_path, &patch_path)
+            .with_context(|| format!("Failed to copy patch from {:?} to {:?}", file_path, patch_path))?;
+        
+        shorebird_info!("复制完成，删除源文件: {:?}", file_path);
+        std::fs::remove_file(file_path)
+            .with_context(|| format!("Failed to remove source file {:?}", file_path))?;
         
         let installed_size = std::fs::metadata(&patch_path)?.len();
         shorebird_info!("Patch successfully moved. Installed size: {} bytes", installed_size);
