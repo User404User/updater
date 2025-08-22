@@ -89,11 +89,33 @@ pub fn patch_check_request_default(
     url: &str,
     request: PatchCheckRequest,
 ) -> anyhow::Result<PatchCheckResponse> {
-    shorebird_info!("Sending patch check request: {:?}", request);
+    shorebird_info!("=== Patch Check Request ===");
+    shorebird_info!("URL: {}", url);
+    shorebird_info!("Request body: {}", serde_json::to_string_pretty(&request).unwrap_or_default());
+    shorebird_info!("Request details: {:?}", request);
+    
     let client = reqwest::blocking::Client::new();
     let result = client.post(url).json(&request).send();
-    let response = handle_network_result(result)?.json()?;
-    shorebird_debug!("Patch check response: {:?}", response);
+    
+    match &result {
+        Ok(resp) => {
+            shorebird_info!("Response status: {}", resp.status());
+            shorebird_info!("Response headers: {:?}", resp.headers());
+        }
+        Err(e) => {
+            shorebird_error!("Request failed: {:?}", e);
+        }
+    }
+    
+    let response_body = handle_network_result(result)?;
+    let response_text = response_body.text()?;
+    
+    shorebird_info!("=== Patch Check Response ===");
+    shorebird_info!("Response body: {}", response_text);
+    
+    let response: PatchCheckResponse = serde_json::from_str(&response_text)?;
+    shorebird_info!("Parsed response: {:?}", response);
+    
     Ok(response)
 }
 

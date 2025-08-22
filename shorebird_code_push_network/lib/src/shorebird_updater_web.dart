@@ -1,4 +1,6 @@
-import 'package:shorebird_code_push/src/shorebird_updater.dart';
+import 'package:shorebird_code_push_network/src/shorebird_updater.dart';
+
+import '../shorebird_code_push_network.dart';
 
 /// {@template shorebird_updater_web}
 /// The Shorebird web updater.
@@ -27,4 +29,7 @@ class ShorebirdUpdaterImpl implements ShorebirdUpdater {
 
   @override
   bool updateBaseUrl(String baseUrl) => false;
+
+  @override
+  bool updateDownloadUrl(String? downloadUrl) => false;
 }

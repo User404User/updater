@@ -7,6 +7,7 @@ import 'package:meta/meta.dart';
 import 'generated/updater_bindings.g.dart';
 import 'shorebird_updater.dart';
 import 'updater.dart';
+import 'updater_network.dart';
 
 @visibleForTesting
 
@@ -45,6 +46,9 @@ class ShorebirdUpdaterImpl implements ShorebirdUpdater {
   final Updater _updater;
 
   final IsolateRun _run;
+  
+  /// Get the underlying updater instance
+  Updater get updater => _updater;
 
   @override
   bool get isAvailable => _isAvailable;

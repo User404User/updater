@@ -20,7 +20,8 @@
       "Bash(grep:*)",
       "Bash(adb logcat:*)",
       "Bash(adb:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

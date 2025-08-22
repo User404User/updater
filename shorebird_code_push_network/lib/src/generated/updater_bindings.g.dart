@@ -2519,6 +2519,17 @@ class UpdaterBindings {
   late final _shorebird_update_with_result = _shorebird_update_with_resultPtr
       .asFunction<ffi.Pointer<UpdateResult> Function(ffi.Pointer<ffi.Char>)>();
 
+  /// Get debug information about the current updater state
+  ffi.Pointer<ffi.Char> shorebird_debug_get_state() {
+    return _shorebird_debug_get_state();
+  }
+
+  late final _shorebird_debug_get_statePtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+          'shorebird_debug_get_state');
+  late final _shorebird_debug_get_state = _shorebird_debug_get_statePtr
+      .asFunction<ffi.Pointer<ffi.Char> Function()>();
+
   /// Start a thread to download an update if one is available.
   void shorebird_start_update_thread() {
     return _shorebird_start_update_thread();
@@ -2545,6 +2556,24 @@ class UpdaterBindings {
       _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<ffi.Char>)>>(
           'shorebird_update_base_url');
   late final _shorebird_update_base_url = _shorebird_update_base_urlPtr
+      .asFunction<bool Function(ffi.Pointer<ffi.Char>)>();
+
+  /// Update the download URL for patches.
+  /// The download_url parameter must be a valid URL string (e.g., "https://download.example.com").
+  /// Pass NULL to clear the custom download URL and revert to using base_url.
+  /// Returns true if the download URL was updated successfully, false otherwise.
+  bool shorebird_update_download_url(
+    ffi.Pointer<ffi.Char> c_download_url,
+  ) {
+    return _shorebird_update_download_url(
+      c_download_url,
+    );
+  }
+
+  late final _shorebird_update_download_urlPtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<ffi.Char>)>>(
+          'shorebird_update_download_url');
+  late final _shorebird_update_download_url = _shorebird_update_download_urlPtr
       .asFunction<bool Function(ffi.Pointer<ffi.Char>)>();
 
   /// Tell the updater that we're launching from what it told us was the
@@ -2779,6 +2808,31 @@ class UpdaterBindings {
           'shorebird_update_base_url_net');
   late final _shorebird_update_base_url_net = _shorebird_update_base_url_netPtr
       .asFunction<bool Function(ffi.Pointer<ffi.Char>)>();
+
+  bool shorebird_update_download_url_net(
+    ffi.Pointer<ffi.Char> c_download_url,
+  ) {
+    return _shorebird_update_download_url_net(
+      c_download_url,
+    );
+  }
+
+  late final _shorebird_update_download_url_netPtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<ffi.Char>)>>(
+          'shorebird_update_download_url_net');
+  late final _shorebird_update_download_url_net =
+      _shorebird_update_download_url_netPtr
+          .asFunction<bool Function(ffi.Pointer<ffi.Char>)>();
+
+  ffi.Pointer<ffi.Char> shorebird_debug_get_state_net() {
+    return _shorebird_debug_get_state_net();
+  }
+
+  late final _shorebird_debug_get_state_netPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+          'shorebird_debug_get_state_net');
+  late final _shorebird_debug_get_state_net = _shorebird_debug_get_state_netPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function()>();
 
   void shorebird_report_launch_start_net() {
     return _shorebird_report_launch_start_net();
