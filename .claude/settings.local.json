@@ -15,7 +15,11 @@
       "Bash(flutter run:*)",
       "Bash(timeout 60 flutter run -d sdk)",
       "Bash($ANDROID_HOME/emulator/emulator:*)",
-      "Bash(flutter:*)"
+      "Bash(flutter:*)",
+      "Bash(cargo build:*)",
+      "Bash(grep:*)",
+      "Bash(adb logcat:*)",
+      "Bash(adb:*)"
     ],
     "deny": []
   }

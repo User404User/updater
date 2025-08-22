@@ -135,6 +135,51 @@ pub fn get_release_version() -> Result<String> {
     }
 }
 
+/// Get the correct storage path based on platform
+fn get_platform_storage_path(app_storage_dir: &str) -> PathBuf {
+    #[cfg(target_os = "ios")]
+    {
+        // On iOS, Shorebird uses $HOME/Library/Application Support/shorebird
+        // instead of the app sandbox directory
+        if let Ok(home) = std::env::var("HOME") {
+            let mut path = PathBuf::from(home);
+            path.push("Library");
+            path.push("Application Support");
+            path.push("shorebird");
+            path.push("shorebird_updater");
+            return path;
+        }
+    }
+    
+    // For all other platforms (including Android), use the provided path
+    let mut path = PathBuf::from(app_storage_dir);
+    path.push("shorebird_updater");
+    path
+}
+
+/// Get the correct cache path based on platform
+fn get_platform_cache_path(code_cache_dir: &str) -> PathBuf {
+    #[cfg(target_os = "ios")]
+    {
+        // On iOS, Shorebird uses the same path for storage and cache
+        if let Ok(home) = std::env::var("HOME") {
+            let mut path = PathBuf::from(home);
+            path.push("Library");
+            path.push("Application Support");
+            path.push("shorebird");
+            path.push("shorebird_updater");
+            path.push("downloads");
+            return path;
+        }
+    }
+    
+    // For all other platforms, use the provided cache directory
+    let mut path = PathBuf::from(code_cache_dir);
+    path.push("shorebird_updater");
+    path.push("downloads");
+    path
+}
+
 /// Returns Ok if the config was set successfully, Err if it was already set.
 pub fn set_config(
     app_config: AppConfig,
@@ -151,12 +196,11 @@ pub fn set_config(
             bail!("Updater already initialized, ignoring second shorebird_init call.");
         }
 
-        let mut code_cache_path = std::path::PathBuf::from(&app_config.code_cache_dir);
-        code_cache_path.push("downloads");
-        let download_dir = code_cache_path;
+        let storage_dir = get_platform_storage_path(&app_config.app_storage_dir);
+        let download_dir = get_platform_cache_path(&app_config.code_cache_dir);
 
         let new_config = UpdateConfig {
-            storage_dir: std::path::PathBuf::from(app_config.app_storage_dir),
+            storage_dir,
             download_dir,
             channel: yaml
                 .channel
@@ -272,11 +316,30 @@ mod tests {
         )?;
 
         let config = super::with_config(|config| Ok(config.clone())).unwrap();
-        assert_eq!(config.storage_dir, PathBuf::from("/app_storage"));
-        assert_eq!(
-            config.download_dir,
-            PathBuf::from("/").join("code_cache").join("downloads")
-        );
+        
+        // Test paths based on platform
+        #[cfg(target_os = "ios")]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                let expected_storage = PathBuf::from(home)
+                    .join("Library")
+                    .join("Application Support")
+                    .join("shorebird")
+                    .join("shorebird_updater");
+                let expected_download = expected_storage.join("downloads");
+                assert_eq!(config.storage_dir, expected_storage);
+                assert_eq!(config.download_dir, expected_download);
+            }
+        }
+        
+        #[cfg(not(target_os = "ios"))]
+        {
+            assert_eq!(config.storage_dir, PathBuf::from("/app_storage/shorebird_updater"));
+            assert_eq!(
+                config.download_dir,
+                PathBuf::from("/").join("code_cache").join("shorebird_updater").join("downloads")
+            );
+        }
         assert!(config.auto_update);
         assert_eq!(config.channel, "fake_channel");
         assert_eq!(config.app_id, "fake_app_id");

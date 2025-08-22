@@ -328,6 +328,33 @@ pub extern "C" fn shorebird_update_with_result(c_channel: *const c_char) -> *con
     return Box::into_raw(Box::new(result));
 }
 
+/// Get debug information about the current updater state
+#[no_mangle]
+pub extern "C" fn shorebird_debug_get_state() -> *mut c_char {
+    log_on_error(
+        || {
+            updater::with_mut_state(|state| {
+                let current_boot = state.current_boot_patch();
+                let next_boot = state.next_boot_patch();
+                let last_successful = state.last_successfully_booted_patch();
+                let currently_booting = state.currently_booting_patch();
+                
+                let debug_info = format!(
+                    "Current boot patch: {:?}\nNext boot patch: {:?}\nLast successful: {:?}\nCurrently booting: {:?}",
+                    current_boot.map(|p| p.number),
+                    next_boot.map(|p| p.number),
+                    last_successful.map(|p| p.number),
+                    currently_booting.map(|p| p.number)
+                );
+                
+                Ok(CString::new(debug_info)?.into_raw())
+            })
+        },
+        "getting debug state",
+        std::ptr::null_mut(),
+    )
+}
+
 /// Start a thread to download an update if one is available.
 #[no_mangle]
 pub extern "C" fn shorebird_start_update_thread() {

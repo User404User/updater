@@ -103,12 +103,17 @@ After initialization, the updater creates:
 
 ```
 app_storage_dir/
-├── updater_state.json    # Persistent state (current patch, etc.)
-└── patches/              # Installed patches
+└── shorebird_updater/    # Shorebird updater directory
+    ├── state.json        # Persistent state (current patch, etc.)
+    ├── patches_state.json # Patches state
+    └── patches/          # Installed patches
+        └── <patch_number>/
+            └── dlc.vmcode # Patch artifact
 
 code_cache_dir/
-└── downloads/            # Temporary download directory
-    └── <patch_files>     # Downloaded but not installed patches
+└── shorebird_updater/    # Shorebird updater directory
+    └── downloads/        # Temporary download directory
+        └── <patch_files> # Downloaded but not installed patches
 ```
 
 ## Example Implementation
