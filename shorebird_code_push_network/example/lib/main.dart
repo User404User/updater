@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shorebird_code_push_network/shorebird_code_push_network.dart';
 import 'test_init_params.dart';
+import 'libapp_example.dart';
 
 // 全局变量存储测试结果
 String testResult = 'Testing...';
@@ -19,13 +20,26 @@ Future<void> initializeNetworkUpdater() async {
   buffer.writeln('🔍 Initializing Shorebird Network Library...');
   
   try {
+    // Get libapp paths for the current platform
+    buffer.writeln('📂 Getting libapp paths...');
+    final libappPaths = await LibappPathHelper.getLibappPaths();
+    if (libappPaths != null) {
+      buffer.writeln('   Found ${libappPaths.length} libapp path(s)');
+      for (int i = 0; i < libappPaths.length; i++) {
+        buffer.writeln('   [${i}]: ${libappPaths[i]}');
+      }
+    } else {
+      buffer.writeln('   No libapp paths found');
+    }
+    
     // Create configuration for network updater
-    const config = NetworkUpdaterConfig(
+    final config = NetworkUpdaterConfig(
       appId: 'test-network-app-id',
       releaseVersion: '1.0.0+1',
       channel: 'stable',
       autoUpdate: false,
       baseUrl: 'https://api.shorebird.dev',
+      originalLibappPaths: libappPaths,
     );
     
     buffer.writeln('📱 Configuration:');
@@ -113,12 +127,24 @@ class _MyHomePageState extends State<MyHomePage> {
     debugPrint('Initializing UpdaterNetwork with configuration...');
     
     try {
+      // Get libapp paths
+      final libappPaths = await LibappPathHelper.getLibappPaths();
+      if (libappPaths != null) {
+        debugPrint('Found ${libappPaths.length} libapp path(s)');
+        for (int i = 0; i < libappPaths.length; i++) {
+          debugPrint('  libapp[$i]: ${libappPaths[i]}');
+        }
+      } else {
+        debugPrint('No libapp paths found');
+      }
+      
       // 使用配置初始化
-      const config = NetworkUpdaterConfig(
+      final config = NetworkUpdaterConfig(
         appId: 'example-app-id',
         releaseVersion: '1.0.0+1',
         channel: 'stable',
         autoUpdate: false,
+        originalLibappPaths: libappPaths,
         // 可选：设置自定义 API 和下载 URL
         // baseUrl: 'https://api.example.com',
         // downloadUrl: 'https://download.example.com',

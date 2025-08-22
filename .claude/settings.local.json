@@ -25,7 +25,8 @@
       "Bash(cargo:*)",
       "Bash(cbindgen:*)",
       "Bash(rg:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(echo:*)"
     ],
     "deny": []
   }

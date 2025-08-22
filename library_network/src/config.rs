@@ -166,15 +166,17 @@ pub fn get_release_version() -> Result<String> {
 
 /// Get the correct storage path based on platform
 fn get_platform_storage_path(app_storage_dir: &str) -> PathBuf {
-    // For network library, use the exact path provided by the platform
-    // The platform layer should handle adding any necessary subdirectories
+    // For network library, use the exact path provided by the Dart layer
+    // The Dart layer (network_init.dart) already handles adding the necessary
+    // Engine-expected suffixes (shorebird_updater for Android, shorebird/shorebird_updater for iOS)
     PathBuf::from(app_storage_dir)
 }
 
 /// Get the correct cache path based on platform
 fn get_platform_cache_path(code_cache_dir: &str) -> PathBuf {
-    // For network library, use the exact path provided by the platform
-    // The platform layer should handle adding any necessary subdirectories
+    // For network library, use the exact path provided by the Dart layer
+    // The Dart layer (network_init.dart) already handles adding the necessary
+    // Engine-expected suffixes (shorebird_updater for Android, shorebird/shorebird_updater for iOS)
     PathBuf::from(code_cache_dir)
 }
 
@@ -196,9 +198,14 @@ pub fn set_config(
         }
 
         let storage_dir = get_platform_storage_path(&app_config.app_storage_dir);
-        let download_dir = get_platform_cache_path(&app_config.code_cache_dir);
+        // Match official updater behavior: add "downloads" subdirectory
+        let mut download_dir = get_platform_cache_path(&app_config.code_cache_dir);
+        download_dir.push("downloads");
         
-        shorebird_info!("Storage paths resolved:");
+        shorebird_info!("Platform provided paths:");
+        shorebird_info!("  - app_storage_dir: {}", app_config.app_storage_dir);
+        shorebird_info!("  - code_cache_dir: {}", app_config.code_cache_dir);
+        shorebird_info!("Storage paths resolved (matching official updater):");
         shorebird_info!("  - storage_dir: {:?}", storage_dir);
         shorebird_info!("  - download_dir: {:?}", download_dir);
 

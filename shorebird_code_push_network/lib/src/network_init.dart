@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'generated/updater_bindings.g.dart';
@@ -46,6 +47,21 @@ class NetworkUpdaterConfig {
 class NetworkUpdaterInitializer {
   static bool _initialized = false;
   
+  static const MethodChannel _channel = MethodChannel('dev.shorebird.code_push');
+  
+  /// Get storage paths from native platform
+  static Future<Map<String, String>?> _getStoragePaths() async {
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getStoragePaths');
+      if (result != null) {
+        return result.cast<String, String>();
+      }
+    } catch (e) {
+      debugPrint('Error getting storage paths from native: $e');
+    }
+    return null;
+  }
+  
   /// Initialize the network updater library
   static Future<bool> initialize(NetworkUpdaterConfig config) async {
     if (_initialized) {
@@ -58,7 +74,7 @@ class NetworkUpdaterInitializer {
       
       // Get platform-specific directories
       // Get storage paths from native platform
-      final storagePaths = await LibappPathHelper.getStoragePaths();
+      final storagePaths = await _getStoragePaths();
       
       String appStorageDir;
       String codeCacheDir;
@@ -70,38 +86,87 @@ class NetworkUpdaterInitializer {
         debugPrint('Using native storage paths');
       } else {
         // Fallback to path_provider
-        final appDir = await getApplicationDocumentsDirectory();
-        final cacheDir = await getTemporaryDirectory();
-        appStorageDir = appDir.path;
-        codeCacheDir = cacheDir.path;
-        debugPrint('Using path_provider paths (fallback)');
+        // IMPORTANT: Must match paths used by official Shorebird Engine!
+        // Engine uses context.getFilesDir() which returns /data/user/0/.../files
+        // NOT getApplicationDocumentsDirectory() which returns /data/user/0/.../app_flutter
+        
+        if (Platform.isAndroid) {
+          // On Android, we need to use the 'files' directory to match Engine
+          final appDir = await getApplicationSupportDirectory();
+          appStorageDir = appDir.path.replaceAll('/app_flutter', '/files');
+          
+          // For cache, use the standard cache directory
+          final cacheDir = await getTemporaryDirectory();
+          codeCacheDir = cacheDir.path;
+          
+          debugPrint('Android: Adjusted paths to match Engine');
+          debugPrint('  - appStorageDir: $appStorageDir (should contain /files)');
+          debugPrint('  - codeCacheDir: $codeCacheDir');
+        } else if (Platform.isIOS) {
+          // iOS paths are different
+          final appDir = await getApplicationDocumentsDirectory();
+          final cacheDir = await getTemporaryDirectory();
+          appStorageDir = appDir.path;
+          codeCacheDir = cacheDir.path;
+          debugPrint('iOS: Using standard path_provider paths');
+        } else {
+          // Other platforms
+          final appDir = await getApplicationDocumentsDirectory();
+          final cacheDir = await getTemporaryDirectory();
+          appStorageDir = appDir.path;
+          codeCacheDir = cacheDir.path;
+          debugPrint('Other platform: Using standard path_provider paths');
+        }
       }
       
-      // Match the original updater directory structure
-      // storage_dir = app_storage_dir (no suffix)
-      // download_dir = code_cache_dir + /downloads
-      final downloadDir = '$codeCacheDir/downloads';
+      // Match the Engine's expected directory structure
+      // Engine expects paths with specific suffixes
+      String finalAppStorageDir;
+      String finalCodeCacheDir;
       
-      debugPrint('App storage dir: $appStorageDir');
+      // Match official Engine behavior: pass paths with shorebird_updater suffix
+      // The Engine's shorebird.cc adds this suffix before calling the updater
+      if (Platform.isIOS) {
+        // iOS: Native plugin already returns the correct base path with /shorebird
+        // Engine adds shorebird_updater suffix to this base
+        finalAppStorageDir = '$appStorageDir/shorebird_updater';
+        finalCodeCacheDir = '$codeCacheDir/shorebird_updater';
+      } else if (Platform.isAndroid) {
+        // Android: Engine adds shorebird_updater suffix
+        finalAppStorageDir = '$appStorageDir/shorebird_updater';
+        finalCodeCacheDir = '$codeCacheDir/shorebird_updater';
+      } else {
+        // Other platforms: add shorebird_updater suffix
+        finalAppStorageDir = '$appStorageDir/shorebird_updater';
+        finalCodeCacheDir = '$codeCacheDir/shorebird_updater';
+      }
+      
+      // Don't add /downloads here - the Rust library adds it to match official updater
+      final downloadDir = '$finalCodeCacheDir/downloads';
+      
+      debugPrint('Original app storage dir: $appStorageDir');
+      debugPrint('Final app storage dir: $finalAppStorageDir');
+      debugPrint('Original code cache dir: $codeCacheDir');
+      debugPrint('Final code cache dir: $finalCodeCacheDir');
       debugPrint('Download dir: $downloadDir');
       
       // Create directories if they don't exist
-      final storageDir = Directory(appStorageDir);
+      final storageDir = Directory(finalAppStorageDir);
       if (!await storageDir.exists()) {
         await storageDir.create(recursive: true);
-        debugPrint('Created storage directory');
+        debugPrint('Created storage directory: $finalAppStorageDir');
       }
       
       final downloadDirectory = Directory(downloadDir);
       if (!await downloadDirectory.exists()) {
         await downloadDirectory.create(recursive: true);
-        debugPrint('Created download directory');
+        debugPrint('Created download directory: $downloadDir');
       }
       
-      // Initialize the native library
+      // Initialize the native library with corrected paths
       final result = _initializeNative(
-        appStorageDir: appStorageDir,
-        codeCacheDir: downloadDir,
+        appStorageDir: finalAppStorageDir,
+        codeCacheDir: finalCodeCacheDir,
         config: config,
       );
       

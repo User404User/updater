@@ -13,6 +13,7 @@ export 'src/shorebird_updater.dart'
         UpdateTrack;
 export 'src/updater_network.dart' 
     show UpdaterNetwork, NetworkUpdaterConfig, NetworkUpdaterInitializer;
+export 'src/libapp_path_helper.dart' show LibappPathHelper;
 
 // 导出网络版本的类
 export 'src/shorebird_updater_io.dart' show ShorebirdUpdaterImpl;

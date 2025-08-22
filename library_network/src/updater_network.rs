@@ -193,13 +193,22 @@ pub fn init(
                    config.app_id, config.channel, config.auto_update, config.base_url);
 
     // For network library, libapp_path is optional since we don't need the base for patching
+    shorebird_info!("[Init] Processing libapp paths...");
+    shorebird_info!("  - original_libapp_paths count: {}", app_config.original_libapp_paths.len());
+    for (i, path) in app_config.original_libapp_paths.iter().enumerate() {
+        shorebird_info!("  - Path[{}]: {}", i, path);
+    }
+    
     let libapp_path = match libapp_path_from_settings(&app_config.original_libapp_paths) {
         Ok(path) => {
             shorebird_info!("Resolved libapp_path: {:?}", path);
             path
         }
-        Err(_) => {
-            shorebird_info!("No libapp_path provided, using dummy path for network library");
+        Err(e) => {
+            shorebird_warn!("Failed to get libapp_path: {:?}", e);
+            shorebird_warn!("No libapp_path provided, using dummy path for network library");
+            shorebird_warn!("IMPORTANT: Patch decompression WILL FAIL without valid libapp.so path!");
+            shorebird_warn!("Please ensure NetworkUpdaterConfig.originalLibappPaths contains valid paths");
             PathBuf::from("/dummy/libapp.so")
         }
     };
@@ -273,6 +282,37 @@ pub fn should_auto_update() -> anyhow::Result<bool> {
 /// Returns true if an update is available for download. Will return false if the update is already
 /// downloaded and ready to install.
 pub fn check_for_downloadable_update(channel: Option<&str>) -> anyhow::Result<bool> {
+    // First, verify if libapp is accessible - if not, hot updates are not supported
+    let can_access_libapp = with_config(|config| {
+        #[cfg(target_os = "android")]
+        {
+            // Try to actually open libapp to verify it's accessible
+            shorebird_info!("[Hot Update Check] Verifying libapp.so accessibility...");
+            match crate::android::open_libapp_from_path(&config.libapp_path) {
+                Ok(_) => {
+                    shorebird_info!("[Hot Update Check] libapp.so is accessible, hot updates are supported");
+                    Ok(true)
+                }
+                Err(e) => {
+                    shorebird_warn!("[Hot Update Check] Cannot access libapp.so: {:?}", e);
+                    shorebird_warn!("[Hot Update Check] Hot updates are NOT supported - app is already at latest version");
+                    Ok(false)
+                }
+            }
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            // For non-Android platforms, assume libapp is accessible
+            let _ = config; // Avoid unused warning
+            Ok(true)
+        }
+    })?;
+    
+    if !can_access_libapp {
+        shorebird_info!("[Hot Update Check] Returning false - hot updates not supported without libapp access");
+        return Ok(false);
+    }
+    
     let (request, url, request_fn) = with_config(|config| {
         let mut config = config.clone();
 
@@ -345,7 +385,7 @@ impl ReadSeek for fs::File {}
 // FIXME: these patch_base functions should move to platform-specific modules where they can all be tested.
 #[cfg(any(target_os = "android", test))]
 fn patch_base(config: &UpdateConfig) -> anyhow::Result<Box<dyn ReadSeek>> {
-    let base_r = crate::android::open_base_lib(&config.libapp_path, "libapp.so")?;
+    let base_r = crate::android::open_libapp_from_path(&config.libapp_path)?;
     Ok(Box::new(base_r))
 }
 
@@ -387,6 +427,16 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
     let mut config = copy_update_config()?;
     if channel.is_some() {
         config.channel = channel.unwrap().to_string();
+    }
+    
+    // Verify libapp accessibility before proceeding
+    #[cfg(target_os = "android")]
+    {
+        if !config.libapp_path.exists() || !config.libapp_path.to_str().map(|s| s.ends_with("libapp.so")).unwrap_or(false) {
+            shorebird_warn!("[Update] libapp.so not accessible at: {:?}", config.libapp_path);
+            shorebird_warn!("[Update] Hot updates are NOT supported - returning NoUpdate");
+            return Ok(UpdateStatus::NoUpdate);
+        }
     }
 
     // We discard any events if we have more than 3 queued to make sure
@@ -436,25 +486,79 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
     shorebird_info!("=== Starting patch download ===");
     shorebird_info!("Patch number: {}", patch.number);
     shorebird_info!("Download directory: {:?}", download_dir);
-    shorebird_info!("Download path: {:?}", download_path);
+    shorebird_info!("Download path (compressed): {:?}", download_path);
+    
+    // Verify download directory exists
+    if !download_dir.exists() {
+        shorebird_info!("Creating download directory: {:?}", download_dir);
+        std::fs::create_dir_all(&download_dir)?;
+    }
     
     // Consider supporting allowing the system to download for us (e.g. iOS).
     // Use custom download URL if provided, otherwise use base_url for domain replacement
     let replacement_url = config.download_url.as_deref().or(Some(&config.base_url));
     download_to_path_with_domain_replacement(&config.network_hooks, &patch.download_url, &download_path, replacement_url)?;
     
+    // Verify download succeeded
+    if download_path.exists() {
+        let download_size = std::fs::metadata(&download_path)?.len();
+        shorebird_info!("Download completed. File size: {} bytes", download_size);
+    } else {
+        shorebird_error!("Download failed! File not found at: {:?}", download_path);
+        return Ok(UpdateStatus::UpdateHadError);
+    }
+    
     shorebird_info!("=== Starting patch decompression ===");
     let output_path = download_dir.join(format!("{}.full", patch.number));
-    shorebird_info!("Output path: {:?}", output_path);
+    shorebird_info!("Decompressed output path: {:?}", output_path);
     
-    let patch_base_rs = patch_base(&config)?;
+    shorebird_info!("Attempting to get patch base...");
+    shorebird_info!("Config libapp_path: {:?}", config.libapp_path);
+    
+    let patch_base_rs = match patch_base(&config) {
+        Ok(base) => {
+            shorebird_info!("Successfully obtained patch base");
+            base
+        }
+        Err(e) => {
+            shorebird_error!("Failed to get patch base: {:?}", e);
+            shorebird_error!("libapp_path: {:?}", config.libapp_path);
+            return Err(e);
+        }
+    };
+    
     shorebird_info!("Starting inflate process...");
-    inflate(&download_path, patch_base_rs, &output_path)?;
-    shorebird_info!("Inflate completed successfully");
+    shorebird_info!("  - Patch file: {:?}", download_path);
+    shorebird_info!("  - Output file: {:?}", output_path);
+    
+    match inflate(&download_path, patch_base_rs, &output_path) {
+        Ok(_) => shorebird_info!("Inflate completed successfully"),
+        Err(e) => {
+            shorebird_error!("Inflate failed: {:?}", e);
+            shorebird_error!("Current working directory: {:?}", std::env::current_dir());
+            // Check if files exist
+            if !download_path.exists() {
+                shorebird_error!("Downloaded patch file does not exist: {:?}", download_path);
+            } else {
+                shorebird_info!("Downloaded patch file exists, size: {} bytes", std::fs::metadata(&download_path).map(|m| m.len()).unwrap_or(0));
+            }
+            return Err(e);
+        }
+    }
 
     // Check the hash before moving into place.
     shorebird_info!("=== Verifying patch hash ===");
     shorebird_info!("Expected hash: {}", patch.hash);
+    
+    // Verify decompressed file exists before hash check
+    if output_path.exists() {
+        let output_size = std::fs::metadata(&output_path)?.len();
+        shorebird_info!("Decompressed file exists at: {:?}, size: {} bytes", output_path, output_size);
+    } else {
+        shorebird_error!("Decompressed file not found at: {:?}", output_path);
+        return Ok(UpdateStatus::UpdateHadError);
+    }
+    
     check_hash(&output_path, &patch.hash).with_context(|| {
         format!(
             "This app reports version {}, but the binary is different from \
@@ -462,19 +566,45 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
             config.release_version, config.release_version
         )
     })?;
+    shorebird_info!("Hash verification passed");
 
     // We're abusing the config lock as a UpdateState lock for now.
     // This makes it so we never try to write to the UpdateState file from
     // two threads at once. We could give UpdateState its own lock instead.
+    shorebird_info!("=== Installing patch to final location ===");
     with_mut_state(|state| {
         let patch_info = PatchInfo {
             path: output_path,
             number: patch.number,
         };
+        
+        shorebird_info!("Installing patch:");
+        shorebird_info!("  - Patch number: {}", patch.number);
+        shorebird_info!("  - Source path: {:?}", patch_info.path);
+        
+        // Get expected final path
+        let storage_dir = with_config(|c| Ok(c.storage_dir.clone()))?;
+        let expected_final_path = storage_dir
+            .join("patches")
+            .join(patch.number.to_string())
+            .join("dlc.vmcode");
+        shorebird_info!("  - Expected final path: {:?}", expected_final_path);
+        
         // Move/state update should be "atomic" (it isn't today).
         state.install_patch(&patch_info, &patch.hash, patch.hash_signature.as_deref())?;
+        
+        // Verify installation
+        if expected_final_path.exists() {
+            let final_size = std::fs::metadata(&expected_final_path)?.len();
+            shorebird_info!("Installation successful!");
+            shorebird_info!("  - Final path exists: {:?}", expected_final_path);
+            shorebird_info!("  - Final file size: {} bytes", final_size);
+        } else {
+            shorebird_error!("Installation verification failed! File not found at expected path: {:?}", expected_final_path);
+        }
+        
         shorebird_info!(
-            "Patch {} successfully downloaded. It will be launched when the app next restarts.",
+            "Patch {} successfully downloaded and installed. It will be launched when the app next restarts.",
             patch.number
         );
 

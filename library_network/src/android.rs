@@ -21,6 +21,7 @@ use crate::InitError;
 /// "/data/app/~~7LtReIkm5snW_oXeDoJ5TQ==/com.example.shorebird_test-rpkDZSLBRv2jWcc1gQpwdg==/lib/x86_64/libapp.so"
 /// Will return:
 /// "/data/app/~~7LtReIkm5snW_oXeDoJ5TQ==/com.example.shorebird_test-rpkDZSLBRv2jWcc1gQpwdg=="
+#[allow(dead_code)]
 fn app_data_dir_from_libapp_path(libapp_path: &str) -> Result<PathBuf, InitError> {
     let path = PathBuf::from(libapp_path);
     let root = path.ancestors().nth(3).ok_or(InitError::InvalidArgument(
@@ -150,10 +151,140 @@ fn find_and_open_lib(apks_dir: &Path, lib_name: &str) -> anyhow::Result<ZipLocat
     check_for_lib_path(&base_apk_path, &lib_path)
 }
 
+/// Opens libapp.so from the given path, supporting both APK extraction and direct file access
+pub(crate) fn open_libapp_from_path(libapp_path: &Path) -> anyhow::Result<Cursor<Vec<u8>>> {
+    shorebird_info!("[Android] open_libapp_from_path called with: {:?}", libapp_path);
+    
+    // If the path ends with libapp.so and exists, read it directly
+    if libapp_path.exists() && libapp_path.to_str().map(|s| s.ends_with("libapp.so")).unwrap_or(false) {
+        shorebird_info!("[Android] Reading libapp.so directly from: {:?}", libapp_path);
+        let mut file = fs::File::open(&libapp_path)?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)?;
+        shorebird_info!("[Android] Successfully read {} bytes from libapp.so", buffer.len());
+        return Ok(Cursor::new(buffer));
+    }
+    
+    // Path doesn't exist, let's search for libapp.so in nearby directories
+    shorebird_warn!("[Android] libapp.so not found at expected path: {:?}", libapp_path);
+    shorebird_info!("[Android] Searching for libapp.so in parent directories...");
+    
+    // Get the parent directories to search
+    let mut search_paths = Vec::new();
+    
+    // If libapp_path is something like /data/app/.../com.example.app-xxx=/lib/arm64/libapp.so
+    // We need to check different variations
+    if let Some(parent) = libapp_path.parent() {
+        search_paths.push(parent.to_path_buf());
+        
+        // Also check the parent's parent
+        if let Some(grandparent) = parent.parent() {
+            search_paths.push(grandparent.to_path_buf());
+            
+            // List all directories under grandparent
+            if grandparent.exists() {
+                shorebird_info!("[Android] Listing directories under: {:?}", grandparent);
+                if let Ok(entries) = fs::read_dir(grandparent) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            shorebird_info!("[Android] Found directory: {:?}", path);
+                            search_paths.push(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Search for libapp.so in all possible locations
+    for search_dir in &search_paths {
+        shorebird_info!("[Android] Searching in directory: {:?}", search_dir);
+        
+        // Direct check
+        let direct_path = search_dir.join("libapp.so");
+        if direct_path.exists() {
+            shorebird_info!("[Android] Found libapp.so at: {:?}", direct_path);
+            let mut file = fs::File::open(&direct_path)?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
+            shorebird_info!("[Android] Successfully read {} bytes from libapp.so", buffer.len());
+            return Ok(Cursor::new(buffer));
+        }
+        
+        // Check lib subdirectories with different architectures
+        let arch_dirs = ["arm64-v8a", "arm64", "armeabi-v7a", "armeabi", "x86_64", "x86"];
+        for arch in &arch_dirs {
+            let arch_path = search_dir.join("lib").join(arch).join("libapp.so");
+            if arch_path.exists() {
+                shorebird_info!("[Android] Found libapp.so at: {:?}", arch_path);
+                let mut file = fs::File::open(&arch_path)?;
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer)?;
+                shorebird_info!("[Android] Successfully read {} bytes from libapp.so", buffer.len());
+                return Ok(Cursor::new(buffer));
+            }
+        }
+    }
+    
+    // Last resort: list all files in the app directory to help debugging
+    shorebird_error!("[Android] Could not find libapp.so in any expected location");
+    shorebird_error!("[Android] Attempting to list all files for debugging...");
+    
+    if let Some(parent) = libapp_path.parent() {
+        if let Some(grandparent) = parent.parent() {
+            if let Some(app_dir) = grandparent.parent() {
+                list_directory_contents(app_dir, 0, 3);
+            }
+        }
+    }
+    
+    // Otherwise, try the APK-based approach
+    shorebird_info!("[Android] Falling back to APK approach");
+    open_base_lib(libapp_path, "libapp.so")
+}
+
+fn list_directory_contents(dir: &Path, level: usize, max_level: usize) {
+    if level > max_level || !dir.exists() {
+        return;
+    }
+    
+    shorebird_info!("[Android] Listing contents of: {}", dir.display());
+    
+    if let Ok(entries) = fs::read_dir(dir) {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.path());
+        
+        for entry in entries {
+            let path = entry.path();
+            let indent = "  ".repeat(level);
+            
+            if path.is_dir() {
+                shorebird_info!("[Android] {}📁 {}", indent, path.display());
+                list_directory_contents(&path, level + 1, max_level);
+            } else {
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                // Print all .so files and files containing "app" in their name
+                if file_name.ends_with(".so") || file_name.to_lowercase().contains("app") {
+                    shorebird_info!("[Android] {}📄 {} ({})", indent, file_name, path.display());
+                }
+            }
+        }
+    } else {
+        shorebird_error!("[Android] Failed to read directory: {}", dir.display());
+    }
+}
+
 /// Given a directory of APKs, find the one that contains the library we want.
 /// This has to be done due to split APKs.
 /// This is public so c_api can use this for testing.
 pub(crate) fn open_base_lib(apks_dir: &Path, lib_name: &str) -> anyhow::Result<Cursor<Vec<u8>>> {
+    shorebird_info!("[Android] open_base_lib called with:");
+    shorebird_info!("  - apks_dir: {:?}", apks_dir);
+    shorebird_info!("  - lib_name: {}", lib_name);
+    shorebird_info!("  - apks_dir exists: {}", apks_dir.exists());
+    shorebird_info!("  - apks_dir is_dir: {}", apks_dir.is_dir());
+    
     // As far as I can tell, Android provides no apis for reading per-platform
     // assets (e.g. libapp.so) from an APK.  Both Facebook and Chromium
     // seem to have written their own code to do this:
@@ -166,7 +297,51 @@ pub(crate) fn open_base_lib(apks_dir: &Path, lib_name: &str) -> anyhow::Result<C
     // Ideally we would do this apk reading from the C++ side and keep the rust
     // portable, but we have a zip library here, and don't on the C++ side.
 
-    let mut zip_location = find_and_open_lib(apks_dir, lib_name)?;
+    shorebird_info!("[Android] Attempting to find and open lib...");
+    
+    // First try to find lib in APK (for bundled apps)
+    let mut zip_location = match find_and_open_lib(apks_dir, lib_name) {
+        Ok(loc) => {
+            shorebird_info!("[Android] Successfully found lib in APK");
+            loc
+        }
+        Err(e) => {
+            shorebird_error!("[Android] Failed to find lib in APK: {:?}", e);
+            
+            // Fallback: Try to read the libapp.so directly from the file system
+            // This is needed for apps that have libapp.so extracted
+            let libapp_path = apks_dir.join("lib").join(android_arch_names().lib_dir).join(lib_name);
+            shorebird_info!("[Android] Trying direct file access at: {:?}", libapp_path);
+            
+            if libapp_path.exists() {
+                shorebird_info!("[Android] Found extracted libapp.so at: {:?}", libapp_path);
+                let mut file = fs::File::open(&libapp_path)?;
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer)?;
+                return Ok(Cursor::new(buffer));
+            }
+            
+            // Also try the parent directory + lib path (for the case where apks_dir is the app directory)
+            if apks_dir.parent().is_some() {
+                for ancestor in apks_dir.ancestors() {
+                    let potential_libapp = ancestor.join("lib").join(android_arch_names().lib_dir).join(lib_name);
+                    shorebird_info!("[Android] Checking: {:?}", potential_libapp);
+                    if potential_libapp.exists() {
+                        shorebird_info!("[Android] Found libapp.so at: {:?}", potential_libapp);
+                        let mut file = fs::File::open(&potential_libapp)?;
+                        let mut buffer = Vec::new();
+                        file.read_to_end(&mut buffer)?;
+                        return Ok(Cursor::new(buffer));
+                    }
+                }
+            }
+            
+            if apks_dir.to_str() == Some("/dummy") {
+                shorebird_error!("[Android] Dummy path detected! Please provide real libapp.so path in NetworkUpdaterConfig.originalLibappPaths");
+            }
+            return Err(e);
+        }
+    };
     let mut zip_file = zip_location
         .archive
         .by_name(&zip_location.internal_path)
@@ -182,28 +357,19 @@ pub(crate) fn open_base_lib(apks_dir: &Path, lib_name: &str) -> anyhow::Result<C
 }
 
 pub fn libapp_path_from_settings(original_libapp_paths: &[String]) -> Result<PathBuf, InitError> {
-    // FIXME: This makes the assumption that the last path provided is the full
-    // path to the libapp.so file.  This is true for the current engine, but
-    // may not be true in the future.  Better would be for the engine to
-    // pass us the path to the base.apk.
-    // https://github.com/shorebirdtech/shorebird/issues/283
-    // This is where the paths are set today:
-    // First path is "libapp.so" (for dlopen), second is a full path:
-    // https://github.com/flutter/engine/blob/a7c9cc58a71c5850be0215ab1997db92cc5e8d3e/shell/platform/android/io/flutter/embedding/engine/loader/FlutterLoader.java#L264
-    // Which is composed from nativeLibraryDir:
-    // https://developer.android.com/reference/android/content/pm/ApplicationInfo#nativeLibraryDir
+    // For the network library, we need the actual libapp.so path, not the APK directory
+    // The last path is the full path to libapp.so
     let full_libapp_path = original_libapp_paths
         .last()
         .ok_or(InitError::InvalidArgument(
             "original_libapp_paths".to_string(),
             "empty".to_string(),
         ))?;
-    // We could probably use sourceDir instead?
-    // https://developer.android.com/reference/android/content/pm/ApplicationInfo#sourceDir
-    // and splitSourceDirs (api 21+)
-    // https://developer.android.com/reference/android/content/pm/ApplicationInfo#splitSourceDirs
-    shorebird_debug!("Finding apk from: {:?}", full_libapp_path);
-    app_data_dir_from_libapp_path(full_libapp_path)
+    
+    shorebird_info!("[Android] Network library using direct libapp.so path: {:?}", full_libapp_path);
+    
+    // For network library, return the actual libapp.so path instead of APK directory
+    Ok(PathBuf::from(full_libapp_path))
 }
 
 // These are mostly stub tests to prevent warnings about unused fields.

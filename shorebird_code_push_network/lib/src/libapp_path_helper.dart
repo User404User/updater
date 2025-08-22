@@ -39,12 +39,23 @@ class LibappPathHelper {
   /// Get iOS libapp paths
   static Future<List<String>?> _getIOSLibappPaths() async {
     try {
-      // On iOS, get the App.framework/App path
+      // Use the native method to get App.framework paths
+      final result = await _platform.invokeMethod<List<dynamic>>('getLibappPaths');
+      if (result != null && result.isNotEmpty) {
+        debugPrint('[LibappPathHelper] Got iOS App paths from native: $result');
+        return result.cast<String>();
+      }
+    } catch (e) {
+      debugPrint('[LibappPathHelper] Failed to get iOS App paths: $e');
+    }
+    
+    // Fallback: try to construct the path
+    try {
       final bundlePath = await _platform.invokeMethod<String>('getBundlePath');
       if (bundlePath != null) {
         final appPath = path.join(bundlePath, 'Frameworks', 'App.framework', 'App');
         if (await File(appPath).exists()) {
-          debugPrint('[LibappPathHelper] Found iOS App path: $appPath');
+          debugPrint('[LibappPathHelper] Found iOS App path (fallback): $appPath');
           return [appPath];
         }
       }
@@ -67,6 +78,58 @@ class LibappPathHelper {
     } catch (e) {
       debugPrint('[LibappPathHelper] Failed to get architecture: $e');
       return 'arm64-v8a'; // Default to most common
+    }
+  }
+  
+  /// Get detailed app information for debugging
+  static Future<Map<String, dynamic>?> getAppInfo() async {
+    try {
+      final result = await _platform.invokeMethod<Map<dynamic, dynamic>>('getAppInfo');
+      if (result != null) {
+        debugPrint('[LibappPathHelper] App info: $result');
+        return result.cast<String, dynamic>();
+      }
+    } catch (e) {
+      debugPrint('[LibappPathHelper] Failed to get app info: $e');
+    }
+    return null;
+  }
+  
+  /// Debug framework/library locations (useful when paths are not found)
+  static Future<Map<String, dynamic>?> debugLocations() async {
+    try {
+      if (Platform.isAndroid) {
+        final result = await _platform.invokeMethod<Map<dynamic, dynamic>>('debugLibappLocations');
+        if (result != null) {
+          debugPrint('[LibappPathHelper] Android debug info:');
+          _printDebugInfo(result);
+          return result.cast<String, dynamic>();
+        }
+      } else if (Platform.isIOS) {
+        final result = await _platform.invokeMethod<Map<dynamic, dynamic>>('debugFrameworkLocations');
+        if (result != null) {
+          debugPrint('[LibappPathHelper] iOS debug info:');
+          _printDebugInfo(result);
+          return result.cast<String, dynamic>();
+        }
+      }
+    } catch (e) {
+      debugPrint('[LibappPathHelper] Failed to get debug locations: $e');
+    }
+    return null;
+  }
+  
+  /// Extract libapp.so from APK (Android only)
+  static Future<String?> extractLibapp() async {
+    if (!Platform.isAndroid) return null;
+    
+    try {
+      final result = await _platform.invokeMethod<String>('extractLibapp');
+      debugPrint('[LibappPathHelper] Extracted libapp to: $result');
+      return result;
+    } catch (e) {
+      debugPrint('[LibappPathHelper] Failed to extract libapp: $e');
+      return null;
     }
   }
   
@@ -115,15 +178,54 @@ class LibappPathHelper {
     }
     return null;
   }
+  
+  /// Helper to print debug info in a readable format
+  static void _printDebugInfo(Map<dynamic, dynamic> info, {String prefix = ''}) {
+    info.forEach((key, value) {
+      if (value is Map) {
+        debugPrint('$prefix$key:');
+        _printDebugInfo(value, prefix: '$prefix  ');
+      } else if (value is List) {
+        debugPrint('$prefix$key: [');
+        for (var item in value) {
+          if (item is Map) {
+            _printDebugInfo(item, prefix: '$prefix  ');
+          } else {
+            debugPrint('$prefix  $item');
+          }
+        }
+        debugPrint('$prefix]');
+      } else {
+        debugPrint('$prefix$key: $value');
+      }
+    });
+  }
 }
 
 /// Example usage in your initialization code:
 /// 
 /// ```dart
+/// // Basic usage
 /// final config = NetworkUpdaterConfig(
 ///   appId: 'your-app-id',
 ///   releaseVersion: '1.0.0+1',
 ///   originalLibappPaths: await LibappPathHelper.getLibappPaths(),
 ///   // ... other config
 /// );
+/// 
+/// // Debug when paths are not found
+/// if (config.originalLibappPaths == null || config.originalLibappPaths!.isEmpty) {
+///   final debugInfo = await LibappPathHelper.debugLocations();
+///   print('Debug info: $debugInfo');
+///   
+///   // On Android, try extracting from APK
+///   if (Platform.isAndroid) {
+///     final extractedPath = await LibappPathHelper.extractLibapp();
+///     if (extractedPath != null) {
+///       config = config.copyWith(
+///         originalLibappPaths: ['libapp.so', extractedPath],
+///       );
+///     }
+///   }
+/// }
 /// ```

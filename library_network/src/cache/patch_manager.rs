@@ -341,23 +341,40 @@ impl ManagePatches for PatchManager {
         hash: &str,
         signature: Option<&'a str>,
     ) -> Result<()> {
+        shorebird_info!("=== Installing patch {} ===", patch_number);
+        shorebird_info!("Source file: {:?}", file_path);
+        
         if !file_path.exists() {
             bail!("Patch file {} does not exist", file_path.display());
         }
+        
+        let source_size = std::fs::metadata(file_path)?.len();
+        shorebird_info!("Source file size: {} bytes", source_size);
 
+        let patch_dir = self.patch_dir(patch_number);
         let patch_path = self.patch_artifact_path(patch_number);
+        
+        shorebird_info!("Patch directory: {:?}", patch_dir);
+        shorebird_info!("Target patch path: {:?}", patch_path);
 
-        std::fs::create_dir_all(self.patch_dir(patch_number))
-            .with_context(|| format!("create_dir_all failed for {}", patch_path.display()))?;
+        std::fs::create_dir_all(&patch_dir)
+            .with_context(|| format!("create_dir_all failed for {}", patch_dir.display()))?;
 
+        shorebird_info!("Moving patch file to final location...");
         std::fs::rename(file_path, &patch_path)?;
+        
+        let installed_size = std::fs::metadata(&patch_path)?.len();
+        shorebird_info!("Patch successfully moved. Installed size: {} bytes", installed_size);
 
         let new_patch = PatchMetadata {
             number: patch_number,
-            size: std::fs::metadata(&patch_path)?.len(),
+            size: installed_size,
             hash: hash.to_owned(),
             signature: signature.map(|s| s.to_owned()),
         };
+        
+        shorebird_info!("Patch metadata: number={}, hash={}, has_signature={}", 
+            patch_number, hash, signature.is_some());
 
         // If a patch was never booted (next_boot_patch != last_booted_patch), we should delete
         // it here before setting next_boot_patch to the new patch.
@@ -374,8 +391,18 @@ impl ManagePatches for PatchManager {
             }
         }
 
+        shorebird_info!("Setting patch {} as next boot patch", patch_number);
         self.patches_state.next_boot_patch = Some(new_patch);
-        self.save_patches_state()
+        
+        shorebird_info!("Saving patches state to disk...");
+        let save_result = self.save_patches_state();
+        match &save_result {
+            Ok(_) => shorebird_info!("Patches state saved successfully"),
+            Err(e) => shorebird_error!("Failed to save patches state: {:?}", e),
+        }
+        
+        shorebird_info!("=== Patch {} installation complete ===", patch_number);
+        save_result
     }
 
     fn last_successfully_booted_patch(&self) -> Option<PatchInfo> {

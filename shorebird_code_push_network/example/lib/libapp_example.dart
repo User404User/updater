@@ -43,7 +43,7 @@ class _LibappExampleState extends State<LibappExample> {
         originalLibappPaths: _libappPaths,
       );
 
-      final success = await NetworkUpdater.initialize(config);
+      final success = await NetworkUpdaterInitializer.initialize(config);
       
       setState(() {
         _status = success ? 'Initialized successfully' : 'Failed to initialize';
@@ -91,7 +91,7 @@ class _LibappExampleState extends State<LibappExample> {
         originalLibappPaths: manualPaths,
       );
 
-      final success = await NetworkUpdater.initialize(config);
+      final success = await NetworkUpdaterInitializer.initialize(config);
       
       setState(() {
         _status = success ? 'Initialized with manual paths' : 'Failed with manual paths';

@@ -278,22 +278,52 @@ pub extern "C" fn shorebird_should_auto_update() -> bool {
 /// patched.
 #[no_mangle]
 pub extern "C" fn shorebird_current_boot_patch_number() -> usize {
-    log_on_error(
-        || Ok(updater::current_boot_patch()?.map_or(0, |p| p.number)),
-        "fetching next_boot_patch_number",
+    shorebird_info!("[C API] Getting current boot patch number...");
+    let result = log_on_error(
+        || {
+            let patch = updater::current_boot_patch()?;
+            match &patch {
+                Some(p) => {
+                    shorebird_info!("[C API] Current boot patch found: number = {}", p.number);
+                    Ok(p.number)
+                }
+                None => {
+                    shorebird_info!("[C API] No current boot patch");
+                    Ok(0)
+                }
+            }
+        },
+        "fetching current_boot_patch_number",
         0,
-    )
+    );
+    shorebird_info!("[C API] Returning current boot patch number: {}", result);
+    result
 }
 
 /// The patch number that will boot on the next run of the app, or 0 if there is
 /// no next patch.
 #[no_mangle]
 pub extern "C" fn shorebird_next_boot_patch_number() -> usize {
-    log_on_error(
-        || Ok(updater::next_boot_patch()?.map_or(0, |p| p.number)),
+    shorebird_info!("[C API] Getting next boot patch number...");
+    let result = log_on_error(
+        || {
+            let patch = updater::next_boot_patch()?;
+            match &patch {
+                Some(p) => {
+                    shorebird_info!("[C API] Next boot patch found: number = {}", p.number);
+                    Ok(p.number)
+                }
+                None => {
+                    shorebird_info!("[C API] No next boot patch");
+                    Ok(0)
+                }
+            }
+        },
         "fetching next_boot_patch_number",
         0,
-    )
+    );
+    shorebird_info!("[C API] Returning next boot patch number: {}", result);
+    result
 }
 
 fn path_to_c_string(path: Option<PathBuf>) -> anyhow::Result<*mut c_char> {
@@ -327,7 +357,22 @@ fn to_update_result(status: anyhow::Result<UpdateStatus>) -> UpdateResult {
 pub extern "C" fn shorebird_next_boot_patch_path() -> *mut c_char {
     log_on_error(
         || {
-            let maybe_path = updater::next_boot_patch()?.map(|p| p.path);
+            shorebird_info!("[C API] Getting next boot patch path...");
+            let maybe_path = updater::next_boot_patch()?.map(|p| {
+                shorebird_info!("[C API] Next boot patch found: number = {}, path = {:?}", p.number, p.path);
+                shorebird_info!("[C API] Path exists: {}", p.path.exists());
+                if p.path.exists() {
+                    if let Ok(metadata) = std::fs::metadata(&p.path) {
+                        shorebird_info!("[C API] File size: {} bytes", metadata.len());
+                    }
+                }
+                p.path
+            });
+            
+            if maybe_path.is_none() {
+                shorebird_info!("[C API] No next boot patch found");
+            }
+            
             path_to_c_string(maybe_path)
         },
         "fetching next_boot_patch_path",
@@ -485,6 +530,173 @@ pub extern "C" fn shorebird_update_download_url(c_download_url: *const c_char) -
         },
         "updating download URL",
         false,
+    )
+}
+
+/// Get detailed patch status information
+/// Returns a C string that must be freed by shorebird_free_status_string
+#[no_mangle]
+pub extern "C" fn shorebird_get_patch_status() -> *mut c_char {
+    log_on_error(
+        || {
+            shorebird_info!("[C API] Getting patch status...");
+            
+            let status = updater::with_mut_state(|state| {
+                let mut info = String::new();
+                
+                // Current boot patch
+                if let Some(current) = state.current_boot_patch() {
+                    info.push_str(&format!("Current boot patch: {} at {:?}\n", current.number, current.path));
+                } else {
+                    info.push_str("Current boot patch: None\n");
+                }
+                
+                // Next boot patch
+                if let Some(next) = state.next_boot_patch() {
+                    info.push_str(&format!("Next boot patch: {} at {:?}\n", next.number, next.path));
+                    
+                    // Check if file exists and size
+                    if next.path.exists() {
+                        if let Ok(metadata) = std::fs::metadata(&next.path) {
+                            info.push_str(&format!("  - File exists: true, size: {} bytes\n", metadata.len()));
+                        }
+                    } else {
+                        info.push_str("  - File exists: false\n");
+                    }
+                } else {
+                    info.push_str("Next boot patch: None\n");
+                }
+                
+                // Get storage paths from config
+                let storage_info = crate::config::with_config(|config| {
+                    Ok((config.storage_dir.clone(), config.download_dir.clone()))
+                })?;
+                
+                let (storage_dir, download_dir) = storage_info;
+                info.push_str(&format!("\nStorage directory: {:?}\n", storage_dir));
+                info.push_str(&format!("Download directory: {:?}\n", download_dir));
+                
+                // Patches directory
+                let patches_dir = storage_dir.join("patches");
+                if patches_dir.exists() {
+                    info.push_str(&format!("Patches directory: {:?}\n", patches_dir));
+                    if let Ok(entries) = std::fs::read_dir(&patches_dir) {
+                        info.push_str("Installed patches:\n");
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.is_dir() {
+                                info.push_str(&format!("  - {}\n", path.display()));
+                                
+                                // Check for dlc.vmcode
+                                let vmcode_path = path.join("dlc.vmcode");
+                                if vmcode_path.exists() {
+                                    if let Ok(metadata) = std::fs::metadata(&vmcode_path) {
+                                        info.push_str(&format!("    - dlc.vmcode: {} bytes\n", metadata.len()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Ok(info)
+            })?;
+            
+            shorebird_info!("[C API] Patch status:\n{}", status);
+            Ok(allocate_c_string(&status)?)
+        },
+        "getting patch status",
+        std::ptr::null_mut(),
+    )
+}
+
+/// Free a string returned by shorebird_get_patch_status
+#[no_mangle]
+pub extern "C" fn shorebird_free_status_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        unsafe {
+            let _ = CString::from_raw(ptr);
+        }
+    }
+}
+
+/// Debug function to check patch paths compatibility with official Engine
+#[no_mangle]
+pub extern "C" fn shorebird_debug_patch_paths() -> *mut c_char {
+    log_on_error(
+        || {
+            shorebird_info!("[C API] Debug: Checking patch paths...");
+            
+            let mut debug_info = String::new();
+            debug_info.push_str("=== Shorebird Network Library Path Debug ===\n\n");
+            
+            // Get config paths
+            let (storage_dir, download_dir) = crate::config::with_config(|config| {
+                Ok((config.storage_dir.clone(), config.download_dir.clone()))
+            })?;
+            
+            debug_info.push_str(&format!("Storage directory: {:?}\n", storage_dir));
+            debug_info.push_str(&format!("Download directory: {:?}\n", download_dir));
+            debug_info.push_str("\n");
+            
+            // Check state files
+            let state_file = storage_dir.join("state.json");
+            let patches_state_file = storage_dir.join("patches_state.json");
+            
+            debug_info.push_str("State files:\n");
+            debug_info.push_str(&format!("- state.json: {:?} (exists: {})\n", 
+                state_file, state_file.exists()));
+            debug_info.push_str(&format!("- patches_state.json: {:?} (exists: {})\n", 
+                patches_state_file, patches_state_file.exists()));
+            debug_info.push_str("\n");
+            
+            // Read patches_state.json content
+            if patches_state_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&patches_state_file) {
+                    debug_info.push_str("patches_state.json content:\n");
+                    debug_info.push_str(&content);
+                    debug_info.push_str("\n\n");
+                }
+            }
+            
+            // Check patches directory
+            let patches_dir = storage_dir.join("patches");
+            debug_info.push_str(&format!("Patches directory: {:?} (exists: {})\n", 
+                patches_dir, patches_dir.exists()));
+            
+            if patches_dir.exists() {
+                debug_info.push_str("Patches found:\n");
+                if let Ok(entries) = std::fs::read_dir(&patches_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            debug_info.push_str(&format!("- Patch directory: {:?}\n", path));
+                            
+                            let dlc_path = path.join("dlc.vmcode");
+                            if dlc_path.exists() {
+                                if let Ok(metadata) = std::fs::metadata(&dlc_path) {
+                                    debug_info.push_str(&format!("  - dlc.vmcode: {} bytes\n", metadata.len()));
+                                    debug_info.push_str(&format!("  - Full path: {:?}\n", dlc_path));
+                                }
+                            } else {
+                                debug_info.push_str("  - dlc.vmcode: NOT FOUND\n");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            debug_info.push_str("\n");
+            debug_info.push_str("Expected by official Engine:\n");
+            debug_info.push_str("- Engine calls shorebird_next_boot_patch_path()\n");
+            debug_info.push_str("- Should return: storage_dir/patches/{number}/dlc.vmcode\n");
+            debug_info.push_str("- Example: /data/user/0/.../app_flutter/shorebird_updater/patches/1/dlc.vmcode\n");
+            
+            shorebird_info!("[C API] Debug info:\n{}", debug_info);
+            Ok(allocate_c_string(&debug_info)?)
+        },
+        "debug patch paths",
+        std::ptr::null_mut(),
     )
 }
 
@@ -665,6 +877,16 @@ mod network_exports {
     #[no_mangle]
     pub extern "C" fn shorebird_get_release_version_net() -> *mut c_char {
         super::shorebird_get_release_version()
+    }
+    
+    #[no_mangle]
+    pub extern "C" fn shorebird_get_patch_status_net() -> *mut c_char {
+        super::shorebird_get_patch_status()
+    }
+    
+    #[no_mangle]
+    pub extern "C" fn shorebird_free_status_string_net(ptr: *mut c_char) {
+        super::shorebird_free_status_string(ptr)
     }
 }
 

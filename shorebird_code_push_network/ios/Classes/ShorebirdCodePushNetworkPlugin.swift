@@ -17,6 +17,10 @@ public class ShorebirdCodePushNetworkPlugin: NSObject, FlutterPlugin {
     let instance = ShorebirdCodePushNetworkPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
     
+    // Also register on the channel used by network_init.dart
+    let storageChannel = FlutterMethodChannel(name: "dev.shorebird.code_push", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(instance, channel: storageChannel)
+    
     // Register the libapp path provider
     libappPathProvider = LibappPathProvider(with: registrar)
     
@@ -57,6 +61,22 @@ public class ShorebirdCodePushNetworkPlugin: NSObject, FlutterPlugin {
     case "verifyLibrary":
       Self.verifyLibrary()
       result(Self.libraryVerified)
+    case "getStoragePaths":
+      // Return paths that match the official Shorebird Engine
+      // Based on FlutterDartProject.mm, iOS Engine uses:
+      // - $HOME/Library/Application Support/shorebird for both storage and cache
+      let libraryPath = NSSearchPathForDirectoriesInDomains(.libraryDirectory, .userDomainMask, true).first!
+      let appSupportPath = (libraryPath as NSString).appendingPathComponent("Application Support")
+      let shorebirdPath = (appSupportPath as NSString).appendingPathComponent("shorebird")
+      
+      // iOS Engine uses the same path for both storage and cache
+      let paths: [String: String] = [
+        "appStorageDir": shorebirdPath,  // iOS Engine uses Library/Application Support/shorebird
+        "codeCacheDir": shorebirdPath    // iOS Engine uses same path for cache
+      ]
+      
+      print("ShorebirdNetwork: Returning iOS storage paths: \(paths)")
+      result(paths)
     default:
       result(FlutterMethodNotImplemented)
     }

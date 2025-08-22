@@ -57,6 +57,26 @@ class ShorebirdCodePushNetworkPlugin: FlutterPlugin, MethodCallHandler {
     val libappChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "dev.shorebird.code_push_network/libapp")
     libappChannel.setMethodCallHandler(libappPathProvider)
     
+    // Also register on the channel used by network_init.dart
+    val storagePaths = MethodChannel(flutterPluginBinding.binaryMessenger, "dev.shorebird.code_push")
+    storagePaths.setMethodCallHandler { call, result ->
+      when (call.method) {
+        "getStoragePaths" -> {
+          // Return paths that match the official Shorebird Engine
+          // Engine uses context.getFilesDir() for app storage  
+          // Engine uses context.getCacheDir() or context.getCodeCacheDir() for cache
+          val context = flutterPluginBinding.applicationContext
+          val paths = mapOf(
+            "appStorageDir" to context.filesDir.absolutePath,  // /data/user/0/.../files
+            "codeCacheDir" to (context.codeCacheDir?.absolutePath ?: context.cacheDir.absolutePath)
+          )
+          android.util.Log.d("ShorebirdNetwork", "Returning storage paths: $paths")
+          result.success(paths)
+        }
+        else -> result.notImplemented()
+      }
+    }
+    
     // Try to load library again if not already loaded
     if (!libraryLoaded) {
       try {

@@ -250,6 +250,22 @@ SHOREBIRD_EXPORT
 bool shorebird_update_download_url(const char *c_download_url);
 
 /**
+ * Get detailed patch status information
+ * Returns a C string that must be freed by shorebird_free_status_string
+ */
+SHOREBIRD_EXPORT char *shorebird_get_patch_status(void);
+
+/**
+ * Free a string returned by shorebird_get_patch_status
+ */
+SHOREBIRD_EXPORT void shorebird_free_status_string(char *ptr);
+
+/**
+ * Debug function to check patch paths compatibility with official Engine
+ */
+SHOREBIRD_EXPORT char *shorebird_debug_patch_paths(void);
+
+/**
  * Get the current app ID.
  * Returns a C string that must be freed by the caller, or NULL if not initialized.
  */
@@ -338,6 +354,10 @@ SHOREBIRD_EXPORT void shorebird_report_launch_success_net(void);
 SHOREBIRD_EXPORT char *shorebird_get_app_id_net(void);
 
 SHOREBIRD_EXPORT char *shorebird_get_release_version_net(void);
+
+SHOREBIRD_EXPORT char *shorebird_get_patch_status_net(void);
+
+SHOREBIRD_EXPORT void shorebird_free_status_string_net(char *ptr);
 
 #ifdef __cplusplus
 } // extern "C"
