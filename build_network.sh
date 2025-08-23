@@ -196,9 +196,10 @@ cargo build --release --target aarch64-apple-ios-sim
 log_info "📦 创建 XCFramework..."
 
 # 创建临时目录存放framework
-mkdir -p "$OUTPUT_DIR/ios/temp_frameworks"
-DEVICE_FRAMEWORK="$OUTPUT_DIR/ios/temp_frameworks/ShorebirdUpdaterNetwork.framework"
-SIMULATOR_FRAMEWORK="$OUTPUT_DIR/ios/temp_frameworks/ShorebirdUpdaterNetworkSim.framework"
+mkdir -p "$OUTPUT_DIR/ios/temp_frameworks/device"
+mkdir -p "$OUTPUT_DIR/ios/temp_frameworks/simulator"
+DEVICE_FRAMEWORK="$OUTPUT_DIR/ios/temp_frameworks/device/ShorebirdUpdaterNetwork.framework"
+SIMULATOR_FRAMEWORK="$OUTPUT_DIR/ios/temp_frameworks/simulator/ShorebirdUpdaterNetwork.framework"
 
 # 创建设备版本 framework
 mkdir -p "$DEVICE_FRAMEWORK"
@@ -217,7 +218,7 @@ if [ -f "$CARGO_TARGET_DIR/x86_64-apple-ios/release/libshorebird_updater_network
     lipo -create \
         "$CARGO_TARGET_DIR/x86_64-apple-ios/release/libshorebird_updater_network.a" \
         "$CARGO_TARGET_DIR/aarch64-apple-ios-sim/release/libshorebird_updater_network.a" \
-        -output "$SIMULATOR_FRAMEWORK/ShorebirdUpdaterNetworkSim"
+        -output "$SIMULATOR_FRAMEWORK/ShorebirdUpdaterNetwork"
     log_success "✓ iOS 模拟器通用库"
 fi
 
@@ -262,7 +263,7 @@ cat > "$SIMULATOR_FRAMEWORK/Info.plist" << 'EOF'
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>ShorebirdUpdaterNetworkSim</string>
+    <string>ShorebirdUpdaterNetwork</string>
     <key>CFBundleIdentifier</key>
     <string>dev.shorebird.ShorebirdUpdaterNetwork</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -294,7 +295,7 @@ if [ -f "include/updater.h" ]; then
 fi
 
 # 创建 XCFramework
-if [ -f "$DEVICE_FRAMEWORK/ShorebirdUpdaterNetwork" ] && [ -f "$SIMULATOR_FRAMEWORK/ShorebirdUpdaterNetworkSim" ]; then
+if [ -f "$DEVICE_FRAMEWORK/ShorebirdUpdaterNetwork" ] && [ -f "$SIMULATOR_FRAMEWORK/ShorebirdUpdaterNetwork" ]; then
     xcodebuild -create-xcframework \
         -framework "$DEVICE_FRAMEWORK" \
         -framework "$SIMULATOR_FRAMEWORK" \
