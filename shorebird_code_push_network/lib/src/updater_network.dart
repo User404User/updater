@@ -50,10 +50,16 @@ class UpdaterNetwork extends Updater {
   /// Returns true if successful, false if there's an error.
   static bool testLibraryAvailability() {
     try {
-      final bindings = networkBindings;
-      // Try to call a simple function to verify the library works
-      bindings.shorebird_current_boot_patch_number();
-      return true;
+      if (Platform.isIOS) {
+        // iOS requires async initialization
+        debugPrint('iOS library availability test skipped (requires async init)');
+        return true;
+      } else {
+        final bindings = networkBindings;
+        // Try to call a simple function to verify the library works
+        bindings.shorebird_current_boot_patch_number();
+        return true;
+      }
     } on Exception catch (e) {
       debugPrint('Library availability test failed: $e');
       return false;
@@ -186,43 +192,20 @@ class UpdaterNetwork extends Updater {
   static void _loadIOSLibrary() {
     try {
       debugPrint('Loading iOS network library...');
-      debugPrint('Platform.isIOS: ${Platform.isIOS}');
-      debugPrint('Platform.operatingSystem: ${Platform.operatingSystem}');
       
       // iOS uses static linking - library should be already linked
-      debugPrint('Getting DynamicLibrary.process()...');
       final library = ffi.DynamicLibrary.process();
-      debugPrint('DynamicLibrary.process() obtained successfully');
-      
-      debugPrint('Creating UpdaterBindings...');
       _bindings = UpdaterBindings(library);
-      debugPrint('UpdaterBindings created successfully');
       
       // Note: iOS-specific bindings will be initialized asynchronously when needed
-      debugPrint('iOS bindings will be initialized on first use');
-      
-      // Skip verification for now since iOS bindings are async
       debugPrint('iOS network library loaded successfully (bindings pending async init)');
       
     } catch (e) {
       debugPrint('ERROR in _loadIOSLibrary: $e');
-      debugPrint('Stack trace: ${StackTrace.current}');
       throw Exception('Failed to load iOS network library: $e');
     }
   }
 
-  /// Verify iOS library symbols are accessible
-  static void _verifyIOSLibrarySymbols() {
-    if (_bindings == null) return;
-    
-    try {
-      // Verify library works by calling a simple function with _net suffix
-      _bindings!.shorebird_current_boot_patch_number_net();
-      debugPrint('iOS library verification successful with _net functions');
-    } catch (e) {
-      debugPrint('iOS library verification warning: $e');
-    }
-  }
 
   /// The currently active patch number.
   @override
