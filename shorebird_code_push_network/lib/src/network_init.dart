@@ -164,7 +164,7 @@ class NetworkUpdaterInitializer {
       }
       
       // Initialize the native library with corrected paths
-      final result = _initializeNative(
+      final result = await _initializeNative(
         appStorageDir: finalAppStorageDir,
         codeCacheDir: finalCodeCacheDir,
         config: config,
@@ -176,10 +176,16 @@ class NetworkUpdaterInitializer {
         
         // Set download URL if provided
         if (config.downloadUrl != null) {
-          final bindings = UpdaterNetwork.networkBindings;
           final downloadUrlPtr = config.downloadUrl!.toNativeUtf8().cast<Char>();
           try {
-            final urlResult = bindings.shorebird_update_download_url(downloadUrlPtr);
+            bool urlResult;
+            if (Platform.isIOS) {
+              final iosBindings = UpdaterNetwork.iosBindings;
+              urlResult = iosBindings.shorebird_update_download_url_net(downloadUrlPtr);
+            } else {
+              final bindings = UpdaterNetwork.networkBindings;
+              urlResult = bindings.shorebird_update_download_url(downloadUrlPtr);
+            }
             debugPrint('Download URL update result: $urlResult');
           } finally {
             malloc.free(downloadUrlPtr);
@@ -198,13 +204,11 @@ class NetworkUpdaterInitializer {
   }
   
   /// Call the native initialization function
-  static bool _initializeNative({
+  static Future<bool> _initializeNative({
     required String appStorageDir,
     required String codeCacheDir,
     required NetworkUpdaterConfig config,
-  }) {
-    final bindings = UpdaterNetwork.networkBindings;
-    
+  }) async {
     debugPrint('[NetworkUpdater] Starting native initialization...');
     debugPrint('[NetworkUpdater] App ID: ${config.appId}');
     debugPrint('[NetworkUpdater] Release version: ${config.releaseVersion}');
@@ -264,25 +268,57 @@ class NetworkUpdaterInitializer {
     try {
       // Call initialization function
       debugPrint('[NetworkUpdater] Calling shorebird_init_network...');
-      final result = bindings.shorebird_init_network(appParams, networkConfig, fileCallbacks);
+      
+      bool result;
+      if (Platform.isIOS) {
+        // Initialize iOS bindings first
+        await UpdaterNetwork.initializeIOSBindings();
+        
+        // Use iOS-specific bindings for initialization
+        final iosBindings = UpdaterNetwork.iosBindings;
+        result = iosBindings.shorebird_init_network(appParams, networkConfig, fileCallbacks);
+      } else {
+        // Use standard bindings for Android
+        final bindings = UpdaterNetwork.networkBindings;
+        result = bindings.shorebird_init_network(appParams, networkConfig, fileCallbacks);
+      }
       
       debugPrint('[NetworkUpdater] Native init result: $result');
       
       if (result) {
         // Verify initialization by getting app ID
-        final appIdResult = bindings.shorebird_get_app_id();
-        if (appIdResult != nullptr) {
-          final appId = appIdResult.cast<Utf8>().toDartString();
-          debugPrint('[NetworkUpdater] Verified app ID: $appId');
-          bindings.shorebird_free_string(appIdResult);
-        }
-        
-        // Get release version
-        final versionResult = bindings.shorebird_get_release_version();
-        if (versionResult != nullptr) {
-          final version = versionResult.cast<Utf8>().toDartString();
-          debugPrint('[NetworkUpdater] Verified release version: $version');
-          bindings.shorebird_free_string(versionResult);
+        if (Platform.isIOS) {
+          final iosBindings = UpdaterNetwork.iosBindings;
+          final appIdResult = iosBindings.shorebird_get_app_id_net();
+          if (appIdResult != nullptr) {
+            final appId = appIdResult.cast<Utf8>().toDartString();
+            debugPrint('[NetworkUpdater] Verified app ID: $appId');
+            iosBindings.shorebird_free_string_net(appIdResult);
+          }
+          
+          // Get release version
+          final versionResult = iosBindings.shorebird_get_release_version_net();
+          if (versionResult != nullptr) {
+            final version = versionResult.cast<Utf8>().toDartString();
+            debugPrint('[NetworkUpdater] Verified release version: $version');
+            iosBindings.shorebird_free_string_net(versionResult);
+          }
+        } else {
+          final bindings = UpdaterNetwork.networkBindings;
+          final appIdResult = bindings.shorebird_get_app_id();
+          if (appIdResult != nullptr) {
+            final appId = appIdResult.cast<Utf8>().toDartString();
+            debugPrint('[NetworkUpdater] Verified app ID: $appId');
+            bindings.shorebird_free_string(appIdResult);
+          }
+          
+          // Get release version
+          final versionResult = bindings.shorebird_get_release_version();
+          if (versionResult != nullptr) {
+            final version = versionResult.cast<Utf8>().toDartString();
+            debugPrint('[NetworkUpdater] Verified release version: $version');
+            bindings.shorebird_free_string(versionResult);
+          }
         }
       }
       

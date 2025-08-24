@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'package:shorebird_code_push_network/src/generated/updater_bindings.g.dart';
+import 'package:shorebird_code_push_network/src/generated/ios_bindings.dart';
 import 'package:shorebird_code_push_network/src/network_init.dart';
 import 'package:shorebird_code_push_network/src/shorebird_updater.dart';
 import 'package:shorebird_code_push_network/src/updater.dart';
@@ -64,16 +65,14 @@ class UpdaterNetwork extends Updater {
     try {
       debugPrint('Starting UpdaterNetwork initialization...');
       
-      // 触发 networkBindings getter，立即加载库
-      final bindings = networkBindings;
-      debugPrint('Network library bindings created successfully');
-      
-      // 验证库是否正常工作 - 调用平台相关的函数
       if (Platform.isIOS) {
-        // 在 iOS 上验证 _net 后缀函数
-        bindings.shorebird_current_boot_patch_number_net();
-        debugPrint('iOS network library verification successful (_net functions)');
+        // iOS bindings are already initialized in createAndInitialize
+        debugPrint('iOS bindings already initialized');
       } else {
+        // 触发 networkBindings getter，立即加载库
+        final bindings = networkBindings;
+        debugPrint('Network library bindings created successfully');
+        
         // 在 Android 上验证标准函数
         bindings.shorebird_current_boot_patch_number();
         debugPrint('Android network library verification successful');
@@ -88,6 +87,9 @@ class UpdaterNetwork extends Updater {
 
   /// The ffi bindings to the network library.
   static UpdaterBindings? _bindings;
+  
+  /// iOS-specific bindings for direct symbol access
+  static IOSBindings? _iosBindings;
 
   /// The method channel for platform-specific operations.
   static const MethodChannel _channel = MethodChannel('shorebird_code_push_network');
@@ -107,6 +109,22 @@ class UpdaterNetwork extends Updater {
     }
     
     return _bindings!;
+  }
+  
+  /// Get iOS-specific bindings for direct symbol access
+  static IOSBindings get iosBindings {
+    if (_iosBindings != null) return _iosBindings!;
+    throw Exception('IOSBindings not initialized. Call initializeIOSBindings() first.');
+  }
+  
+  /// Initialize iOS bindings asynchronously
+  static Future<void> initializeIOSBindings() async {
+    if (_iosBindings != null) return;
+    
+    debugPrint('Initializing IOSBindings...');
+    _iosBindings = IOSBindings();
+    await _iosBindings!.ensureInitialized();
+    debugPrint('IOSBindings initialized successfully');
   }
 
   /// Load Android dynamic library with proper error handling
@@ -168,17 +186,27 @@ class UpdaterNetwork extends Updater {
   static void _loadIOSLibrary() {
     try {
       debugPrint('Loading iOS network library...');
+      debugPrint('Platform.isIOS: ${Platform.isIOS}');
+      debugPrint('Platform.operatingSystem: ${Platform.operatingSystem}');
       
       // iOS uses static linking - library should be already linked
+      debugPrint('Getting DynamicLibrary.process()...');
       final library = ffi.DynamicLibrary.process();
+      debugPrint('DynamicLibrary.process() obtained successfully');
+      
+      debugPrint('Creating UpdaterBindings...');
       _bindings = UpdaterBindings(library);
+      debugPrint('UpdaterBindings created successfully');
       
-      // Verify that the library symbols are available
-      _verifyIOSLibrarySymbols();
+      // Note: iOS-specific bindings will be initialized asynchronously when needed
+      debugPrint('iOS bindings will be initialized on first use');
       
-      debugPrint('iOS network library loaded successfully');
+      // Skip verification for now since iOS bindings are async
+      debugPrint('iOS network library loaded successfully (bindings pending async init)');
       
     } catch (e) {
+      debugPrint('ERROR in _loadIOSLibrary: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
       throw Exception('Failed to load iOS network library: $e');
     }
   }
@@ -200,7 +228,7 @@ class UpdaterNetwork extends Updater {
   @override
   int currentPatchNumber() {
     if (Platform.isIOS) {
-      return networkBindings.shorebird_current_boot_patch_number_net();
+      return iosBindings.shorebird_current_boot_patch_number_net();
     }
     return networkBindings.shorebird_current_boot_patch_number();
   }
@@ -209,7 +237,7 @@ class UpdaterNetwork extends Updater {
   @override
   int nextPatchNumber() {
     if (Platform.isIOS) {
-      return networkBindings.shorebird_next_boot_patch_number_net();
+      return iosBindings.shorebird_next_boot_patch_number_net();
     }
     return networkBindings.shorebird_next_boot_patch_number();
   }
@@ -218,7 +246,7 @@ class UpdaterNetwork extends Updater {
   @override
   void downloadUpdate() {
     if (Platform.isIOS) {
-      networkBindings.shorebird_update_net();
+      iosBindings.shorebird_update_net();
     } else {
       networkBindings.shorebird_update();
     }
@@ -231,7 +259,7 @@ class UpdaterNetwork extends Updater {
       ? ffi.nullptr 
       : track.name.toNativeUtf8().cast<Char>();
     if (Platform.isIOS) {
-      return networkBindings.shorebird_check_for_downloadable_update_net(
+      return iosBindings.shorebird_check_for_downloadable_update_net(
         trackPtr
       );
     }
@@ -245,7 +273,7 @@ class UpdaterNetwork extends Updater {
       ? ffi.nullptr 
       : track.name.toNativeUtf8().cast<Char>();
     if (Platform.isIOS) {
-      return networkBindings.shorebird_update_with_result_net(trackPtr);
+      return iosBindings.shorebird_update_with_result_net(trackPtr);
     }
     return networkBindings.shorebird_update_with_result(trackPtr);
   }
@@ -254,7 +282,7 @@ class UpdaterNetwork extends Updater {
   @override
   void freeUpdateResult(Pointer<UpdateResult> ptr) {
     if (Platform.isIOS) {
-      networkBindings.shorebird_free_update_result_net(ptr);
+      iosBindings.shorebird_free_update_result_net(ptr);
     } else {
       networkBindings.shorebird_free_update_result(ptr);
     }
@@ -270,7 +298,7 @@ class UpdaterNetwork extends Updater {
       bool result;
       if (Platform.isIOS) {
         debugPrint('Calling iOS function: shorebird_update_base_url_net');
-        result = networkBindings.shorebird_update_base_url_net(urlPtr);
+        result = iosBindings.shorebird_update_base_url_net(urlPtr);
       } else {
         debugPrint('Calling Android function: shorebird_update_base_url');
         result = networkBindings.shorebird_update_base_url(urlPtr);
@@ -298,7 +326,7 @@ class UpdaterNetwork extends Updater {
       // Pass null pointer to clear the download URL
       bool result;
       if (Platform.isIOS) {
-        result = networkBindings.shorebird_update_download_url_net(nullptr);
+        result = iosBindings.shorebird_update_download_url_net(nullptr);
       } else {
         result = networkBindings.shorebird_update_download_url(nullptr);
       }
@@ -312,7 +340,7 @@ class UpdaterNetwork extends Updater {
       bool result;
       if (Platform.isIOS) {
         debugPrint('Calling iOS function: shorebird_update_download_url_net');
-        result = networkBindings.shorebird_update_download_url_net(urlPtr);
+        result = iosBindings.shorebird_update_download_url_net(urlPtr);
       } else {
         debugPrint('Calling Android function: shorebird_update_download_url');
         result = networkBindings.shorebird_update_download_url(urlPtr);
@@ -338,7 +366,7 @@ class UpdaterNetwork extends Updater {
     Pointer<Char>? resultPtr;
     try {
       if (Platform.isIOS) {
-        resultPtr = networkBindings.shorebird_get_app_id_net();
+        resultPtr = iosBindings.shorebird_get_app_id_net();
       } else {
         resultPtr = networkBindings.shorebird_get_app_id();
       }
@@ -351,7 +379,7 @@ class UpdaterNetwork extends Updater {
       
       // Free the string allocated by Rust
       if (Platform.isIOS) {
-        networkBindings.shorebird_free_string_net(resultPtr);
+        iosBindings.shorebird_free_string_net(resultPtr);
       } else {
         networkBindings.shorebird_free_string(resultPtr.cast<Char>());
       }
@@ -372,7 +400,7 @@ class UpdaterNetwork extends Updater {
     Pointer<Char>? resultPtr;
     try {
       if (Platform.isIOS) {
-        resultPtr = networkBindings.shorebird_get_release_version_net();
+        resultPtr = iosBindings.shorebird_get_release_version_net();
       } else {
         resultPtr = networkBindings.shorebird_get_release_version();
       }
@@ -385,7 +413,7 @@ class UpdaterNetwork extends Updater {
       
       // Free the string allocated by Rust
       if (Platform.isIOS) {
-        networkBindings.shorebird_free_string_net(resultPtr);
+        iosBindings.shorebird_free_string_net(resultPtr);
       } else {
         networkBindings.shorebird_free_string(resultPtr.cast<Char>());
       }

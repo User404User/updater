@@ -30,7 +30,14 @@
       "Bash(xcodebuild:*)",
       "Bash(-framework /Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/build_network/ios/temp_frameworks/ShorebirdUpdaterNetwork.framework )",
       "Bash(-framework /Users/coco/Documents/ProjectWork/gitWork/Flutter/updater/build_network/ios/temp_frameworks/ShorebirdUpdaterNetworkSim.framework )",
-      "Bash(-output /tmp/test.xcframework)"
+      "Bash(-output /tmp/test.xcframework)",
+      "Bash(xcrun devicectl list:*)",
+      "Bash(nm:*)",
+      "Bash(md5:*)",
+      "Bash(diff:*)",
+      "Bash(git checkout:*)",
+      "Bash(pod install:*)",
+      "Bash(otool:*)"
     ],
     "deny": []
   }

@@ -9,7 +9,7 @@ Network-only version of Shorebird Code Push for downloading patches without engi
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Shorebird' => 'hello@shorebird.dev' }
   s.source           = { :path => '.' }
-  s.source_files     = 'Classes/**/*'
+  s.source_files     = 'Classes/**/*.{h,m,swift}'
   s.dependency 'Flutter'
   s.platform = :ios, '12.0'
 
