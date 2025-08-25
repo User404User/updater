@@ -163,6 +163,24 @@ class NetworkUpdaterInitializer {
         debugPrint('Created download directory: $downloadDir');
       }
       
+      // Set libapp path for iOS file callbacks
+      if (Platform.isIOS && config.originalLibappPaths != null && config.originalLibappPaths!.isNotEmpty) {
+        // Use the original native path, not Flutter's modified path
+        final nativePath = config.originalLibappPaths!.first;
+        debugPrint('[NetworkInit] Setting native libapp path for iOS: $nativePath');
+        _setLibappPath(nativePath);
+        
+        // Prepare iOS libapp file by copying to temp directory
+        debugPrint('[NetworkInit] Preparing iOS libapp for file access...');
+        try {
+          await _prepareIOSLibapp(nativePath);
+          debugPrint('[NetworkInit] iOS libapp prepared successfully');
+        } catch (e) {
+          debugPrint('[NetworkInit] ERROR: Failed to prepare iOS libapp: $e');
+          debugPrint('[NetworkInit] Continuing with original path, may cause issues');
+        }
+      }
+      
       // Initialize the native library with corrected paths
       final result = await _initializeNative(
         appStorageDir: finalAppStorageDir,
@@ -350,29 +368,300 @@ class NetworkUpdaterInitializer {
     }
   }
   
+  // Global pointer to hold the FileCallbacks to prevent premature garbage collection
+  static Pointer<FileCallbacks>? _fileCallbacksPtr;
+  
   /// Create file callbacks for the native library
   static FileCallbacks _createFileCallbacks() {
-    // For network library, we can use dummy callbacks
-    // since we're not actually reading the original libapp files
-    final callbacks = malloc<FileCallbacks>();
+    // Free any existing callbacks
+    if (_fileCallbacksPtr != null) {
+      malloc.free(_fileCallbacksPtr!);
+    }
+    
+    _fileCallbacksPtr = malloc<FileCallbacks>();
     
     // Set the function pointers
-    callbacks.ref.open = Pointer.fromFunction<Pointer<Void> Function()>(_fileOpen);
-    callbacks.ref.read = Pointer.fromFunction<UintPtr Function(Pointer<Void>, Pointer<Uint8>, UintPtr)>(_fileRead, 0);
-    callbacks.ref.seek = Pointer.fromFunction<Int64 Function(Pointer<Void>, Int64, Int32)>(_fileSeek, 0);
-    callbacks.ref.close = Pointer.fromFunction<Void Function(Pointer<Void>)>(_fileClose);
+    _fileCallbacksPtr!.ref.open = Pointer.fromFunction<Pointer<Void> Function()>(_fileOpen);
+    _fileCallbacksPtr!.ref.read = Pointer.fromFunction<UintPtr Function(Pointer<Void>, Pointer<Uint8>, UintPtr)>(_fileRead, 0);
+    _fileCallbacksPtr!.ref.seek = Pointer.fromFunction<Int64 Function(Pointer<Void>, Int64, Int32)>(_fileSeek, 0);
+    _fileCallbacksPtr!.ref.close = Pointer.fromFunction<Void Function(Pointer<Void>)>(_fileClose);
     
-    // Return the struct value, not the pointer
-    final result = callbacks.ref;
-    malloc.free(callbacks);
-    return result;
+    debugPrint('[FileCallbacks] Created callbacks:');
+    debugPrint('[FileCallbacks]   open: ${_fileCallbacksPtr!.ref.open.address.toRadixString(16)}');
+    debugPrint('[FileCallbacks]   read: ${_fileCallbacksPtr!.ref.read.address.toRadixString(16)}');
+    debugPrint('[FileCallbacks]   seek: ${_fileCallbacksPtr!.ref.seek.address.toRadixString(16)}');
+    debugPrint('[FileCallbacks]   close: ${_fileCallbacksPtr!.ref.close.address.toRadixString(16)}');
+    
+    // Return the struct value - native code expects FileCallbacks by value
+    // But we keep the pointer globally to prevent garbage collection
+    return _fileCallbacksPtr!.ref;
   }
   
-  // Dummy file callback implementations
-  static Pointer<Void> _fileOpen() => nullptr;
-  static int _fileRead(Pointer<Void> handle, Pointer<Uint8> buffer, int count) => 0;
-  static int _fileSeek(Pointer<Void> handle, int offset, int whence) => 0;
-  static void _fileClose(Pointer<Void> handle) {}
+  // File handle for iOS
+  static RandomAccessFile? _currentFile;
+  static String? _libappPath;  // Always use original path for all read operations
+  
+  // Store libapp path for file callbacks
+  static void _setLibappPath(String path) {
+    _libappPath = path;
+    debugPrint('[FileCallbacks] Set original libapp path: $path');
+  }
+  
+  // Verify iOS libapp file is accessible
+  static Future<void> _prepareIOSLibapp(String originalPath) async {
+    debugPrint('[FileCallbacks] Verifying iOS libapp accessibility: $originalPath');
+    
+    try {
+      // Try to access the original file directly
+      File? sourceFile;
+      String? actualSourcePath = originalPath;
+      
+      // Try original path first
+      sourceFile = File(originalPath);
+      if (!sourceFile.existsSync()) {
+        debugPrint('[FileCallbacks] Source file does not exist at: $originalPath');
+        
+        // Try without /private prefix
+        if (originalPath.startsWith('/private')) {
+          final altPath = originalPath.substring(8);
+          debugPrint('[FileCallbacks] Trying alternative path: $altPath');
+          final altFile = File(altPath);
+          if (altFile.existsSync()) {
+            sourceFile = altFile;
+            actualSourcePath = altPath;
+            debugPrint('[FileCallbacks] Found file at alternative path');
+          }
+        }
+      }
+      
+      // If still not found, this is a critical error
+      if (sourceFile == null || !sourceFile.existsSync()) {
+        debugPrint('[FileCallbacks] CRITICAL ERROR: Cannot find source file');
+        debugPrint('[FileCallbacks] Original path: $originalPath');
+        throw Exception('Source file not found at any expected location');
+      }
+      
+      debugPrint('[FileCallbacks] Source file found at: $actualSourcePath');
+      debugPrint('[FileCallbacks] Source file size: ${sourceFile.lengthSync()} bytes');
+      
+      // Test read access to verify iOS allows direct bundle file reading
+      debugPrint('[FileCallbacks] Testing read access to bundle file...');
+      final testFile = sourceFile.openSync(mode: FileMode.read);
+      final testBytes = testFile.readSync(16); // Read first 16 bytes
+      testFile.closeSync();
+      
+      if (testBytes.length > 0) {
+        debugPrint('[FileCallbacks] ✅ Direct bundle file access confirmed');
+        debugPrint('[FileCallbacks] Test read successful: ${testBytes.length} bytes');
+        debugPrint('[FileCallbacks] First bytes: ${testBytes.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      } else {
+        throw Exception('Cannot read from bundle file');
+      }
+      
+      // Store the accessible path - always use original for all operations
+      _libappPath = actualSourcePath;
+      debugPrint('[FileCallbacks] ✅ iOS libapp ready for direct access: $_libappPath');
+      
+    } catch (e) {
+      debugPrint('[FileCallbacks] ERROR accessing iOS libapp: $e');
+      debugPrint('[FileCallbacks] This may cause hash verification and patch operations to fail');
+      // Store the path anyway - let the actual operations handle the error
+      _libappPath = originalPath;
+    }
+  }
+  
+  // Real file callback implementations for iOS
+  static Pointer<Void> _fileOpen() {
+    debugPrint('[FileCallbacks] === _fileOpen called ===');
+    
+    // Always use original path for all read operations
+    // This ensures hash calculation is correct and bundle files are accessible
+    final pathToUse = _libappPath;
+    
+    if (pathToUse == null) {
+      debugPrint('[FileCallbacks] ERROR: No libapp path set');
+      debugPrint('[FileCallbacks] _libappPath: $_libappPath');
+      return nullptr;
+    }
+    
+    debugPrint('[FileCallbacks] Using original bundle path: $pathToUse');
+    debugPrint('[FileCallbacks] This ensures correct hash calculation and direct bundle access');
+    
+    try {
+      // Close any existing file first
+      if (_currentFile != null) {
+        debugPrint('[FileCallbacks] Closing existing file');
+        try {
+          _currentFile!.closeSync();
+        } catch (e) {
+          debugPrint('[FileCallbacks] Error closing existing file: $e');
+        }
+        _currentFile = null;
+      }
+      
+      debugPrint('[FileCallbacks] Checking if file exists: $pathToUse');
+      final file = File(pathToUse);
+      final exists = file.existsSync();
+      debugPrint('[FileCallbacks] File exists: $exists');
+      
+      if (!exists) {
+        debugPrint('[FileCallbacks] CRITICAL ERROR: File does not exist at: $pathToUse');
+        debugPrint('[FileCallbacks] This should not happen if _prepareIOSLibapp succeeded');
+        
+        // List directory contents for debugging
+        if (pathToUse.contains('/')) {
+          final dir = Directory(pathToUse.substring(0, pathToUse.lastIndexOf('/')));
+          if (dir.existsSync()) {
+            debugPrint('[FileCallbacks] Directory contents:');
+            dir.listSync().forEach((entity) {
+              debugPrint('[FileCallbacks]   - ${entity.path}');
+            });
+          }
+        }
+        
+        return nullptr;
+      }
+      
+      debugPrint('[FileCallbacks] Opening file for reading...');
+      _currentFile = file.openSync(mode: FileMode.read);
+      final length = _currentFile!.lengthSync();
+      debugPrint('[FileCallbacks] File opened successfully, length: $length bytes');
+      
+      // Verify we can read from the file
+      try {
+        final testBytes = _currentFile!.readSync(4);
+        debugPrint('[FileCallbacks] Test read successful, first 4 bytes: ${testBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+        _currentFile!.setPositionSync(0); // Reset position
+      } catch (e) {
+        debugPrint('[FileCallbacks] ERROR: Test read failed: $e');
+      }
+      
+      // Use a non-zero pointer value to indicate success
+      debugPrint('[FileCallbacks] Returning success pointer');
+      return Pointer<Void>.fromAddress(1);
+    } catch (e) {
+      debugPrint('[FileCallbacks] ERROR opening file: $e');
+      debugPrint('[FileCallbacks] Stack trace: ${StackTrace.current}');
+      return nullptr;
+    }
+  }
+  
+  static int _fileRead(Pointer<Void> handle, Pointer<Uint8> buffer, int count) {
+    debugPrint('[FileCallbacks] _fileRead called, handle: ${handle.address}, count: $count');
+    
+    if (handle.address == 0) {
+      debugPrint('[FileCallbacks] ERROR: Invalid handle');
+      return 0;
+    }
+    
+    if (_currentFile == null) {
+      debugPrint('[FileCallbacks] ERROR: No current file');
+      return 0;
+    }
+    
+    try {
+      final position = _currentFile!.positionSync();
+      debugPrint('[FileCallbacks] Current position: $position, requesting $count bytes');
+      
+      final bytes = _currentFile!.readSync(count);
+      final bytesRead = bytes.length;
+      debugPrint('[FileCallbacks] Read $bytesRead bytes');
+      
+      if (bytes.isEmpty) {
+        debugPrint('[FileCallbacks] No bytes read (EOF?)');
+        return 0;
+      }
+      
+      // Copy bytes to the buffer
+      for (var i = 0; i < bytes.length; i++) {
+        buffer[i] = bytes[i];
+      }
+      
+      if (bytesRead < 10) {
+        debugPrint('[FileCallbacks] Read data: ${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      }
+      
+      return bytesRead;
+    } catch (e) {
+      debugPrint('[FileCallbacks] ERROR reading file: $e');
+      debugPrint('[FileCallbacks] Stack trace: ${StackTrace.current}');
+      return 0;
+    }
+  }
+  
+  static int _fileSeek(Pointer<Void> handle, int offset, int whence) {
+    debugPrint('[FileCallbacks] _fileSeek called, handle: ${handle.address}, offset: $offset, whence: $whence');
+    
+    if (handle.address == 0) {
+      debugPrint('[FileCallbacks] ERROR: Invalid handle');
+      return 0;
+    }
+    
+    if (_currentFile == null) {
+      debugPrint('[FileCallbacks] ERROR: No current file');
+      return 0;
+    }
+    
+    try {
+      int position;
+      final fileLength = _currentFile!.lengthSync();
+      debugPrint('[FileCallbacks] File length: $fileLength');
+      
+      // whence: 0 = SEEK_SET, 1 = SEEK_CUR, 2 = SEEK_END
+      switch (whence) {
+        case 0: // SEEK_SET
+          debugPrint('[FileCallbacks] SEEK_SET to offset $offset');
+          _currentFile!.setPositionSync(offset);
+          position = offset;
+          break;
+        case 1: // SEEK_CUR
+          final currentPos = _currentFile!.positionSync();
+          position = currentPos + offset;
+          debugPrint('[FileCallbacks] SEEK_CUR from $currentPos to $position');
+          _currentFile!.setPositionSync(position);
+          break;
+        case 2: // SEEK_END
+          position = fileLength + offset;
+          debugPrint('[FileCallbacks] SEEK_END to $position (length: $fileLength, offset: $offset)');
+          _currentFile!.setPositionSync(position);
+          break;
+        default:
+          debugPrint('[FileCallbacks] ERROR: Unknown whence value: $whence');
+          return 0;
+      }
+      
+      final newPos = _currentFile!.positionSync();
+      debugPrint('[FileCallbacks] Seek completed, new position: $newPos');
+      return position;
+    } catch (e) {
+      debugPrint('[FileCallbacks] ERROR seeking file: $e');
+      debugPrint('[FileCallbacks] Stack trace: ${StackTrace.current}');
+      return 0;
+    }
+  }
+  
+  static void _fileClose(Pointer<Void> handle) {
+    debugPrint('[FileCallbacks] _fileClose called, handle: ${handle.address}');
+    
+    if (handle.address == 0) {
+      debugPrint('[FileCallbacks] Warning: Invalid handle in close');
+      return;
+    }
+    
+    if (_currentFile == null) {
+      debugPrint('[FileCallbacks] Warning: No current file to close');
+      return;
+    }
+    
+    try {
+      _currentFile!.closeSync();
+      _currentFile = null;
+      debugPrint('[FileCallbacks] File closed successfully');
+    } catch (e) {
+      debugPrint('[FileCallbacks] ERROR closing file: $e');
+      debugPrint('[FileCallbacks] Stack trace: ${StackTrace.current}');
+    }
+  }
   
   /// Check if the network updater is initialized
   static bool get isInitialized => _initialized;

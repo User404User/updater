@@ -515,6 +515,13 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
     shorebird_info!("Attempting to get patch base...");
     shorebird_info!("Config libapp_path: {:?}", config.libapp_path);
     
+    #[cfg(target_os = "ios")]
+    {
+        shorebird_info!("iOS: Using file provider to open patch base");
+        shorebird_info!("iOS: Config libapp_path: {:?}", config.libapp_path);
+        shorebird_info!("iOS: File provider type: {:?}", &config.file_provider);
+    }
+    
     let patch_base_rs = match patch_base(&config) {
         Ok(base) => {
             shorebird_info!("Successfully obtained patch base");
@@ -522,7 +529,10 @@ fn update_internal(_: &UpdaterLockState, channel: Option<&str>) -> anyhow::Resul
         }
         Err(e) => {
             shorebird_error!("Failed to get patch base: {:?}", e);
+            shorebird_error!("Platform: {}", std::env::consts::OS);
             shorebird_error!("libapp_path: {:?}", config.libapp_path);
+            #[cfg(target_os = "ios")]
+            shorebird_error!("iOS: File provider failed to open file");
             return Err(e);
         }
     };

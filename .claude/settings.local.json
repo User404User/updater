@@ -37,7 +37,8 @@
       "Bash(diff:*)",
       "Bash(git checkout:*)",
       "Bash(pod install:*)",
-      "Bash(otool:*)"
+      "Bash(otool:*)",
+      "Bash(rsync:*)"
     ],
     "deny": []
   }

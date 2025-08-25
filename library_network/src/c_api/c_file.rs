@@ -16,14 +16,29 @@ pub struct CFileProvider {
 
 impl ExternalFileProvider for CFileProvider {
     fn open(&self) -> anyhow::Result<Box<dyn ReadSeek>> {
+        shorebird_info!("[CFileProvider] === Starting file open ===");
+        shorebird_info!("[CFileProvider] File callbacks: open={:?}, read={:?}, seek={:?}, close={:?}", 
+                       self.file_callbacks.open as *const u8,
+                       self.file_callbacks.read as *const u8,
+                       self.file_callbacks.seek as *const u8,
+                       self.file_callbacks.close as *const u8);
+        
+        shorebird_info!("[CFileProvider] Calling file open callback...");
         let handle = (self.file_callbacks.open)();
+        shorebird_info!("[CFileProvider] File open callback returned: {:?} (address: {})", handle, handle as usize);
+        
         if handle.is_null() {
-            return Err(anyhow::anyhow!("CFile open failed"));
+            shorebird_error!("[CFileProvider] File open callback returned null!");
+            shorebird_error!("[CFileProvider] This usually means the file path is invalid or inaccessible");
+            return Err(anyhow::anyhow!("CFile open failed - callback returned null. Check file path accessibility."));
         }
+        
+        shorebird_info!("[CFileProvider] Creating CFile with handle: {:?}", handle);
         let file = CFile {
             file_callbacks: self.file_callbacks,
             handle,
         };
+        shorebird_info!("[CFileProvider] === File open successful ===");
         Ok(Box::new(file))
     }
 }
@@ -32,17 +47,25 @@ impl ReadSeek for CFile {}
 
 impl Drop for CFile {
     fn drop(&mut self) {
+        shorebird_info!("[CFile] Drop called, closing handle: {:?}", self.handle);
         (self.file_callbacks.close)(self.handle);
+        shorebird_info!("[CFile] Handle closed");
     }
 }
 
 impl Read for CFile {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        Ok((self.file_callbacks.read)(
+        let len = buf.len();
+        shorebird_debug!("[CFile] Read called, handle: {:?}, buffer size: {}", self.handle, len);
+        
+        let bytes_read = (self.file_callbacks.read)(
             self.handle,
             buf.as_mut_ptr(),
-            buf.len(),
-        ))
+            len,
+        );
+        
+        shorebird_debug!("[CFile] Read callback returned: {} bytes", bytes_read);
+        Ok(bytes_read)
     }
 }
 
@@ -53,8 +76,16 @@ impl Seek for CFile {
             std::io::SeekFrom::End(offset) => (offset, libc::SEEK_END),
             std::io::SeekFrom::Current(offset) => (offset, libc::SEEK_CUR),
         };
+        
+        shorebird_debug!("[CFile] Seek called, handle: {:?}, offset: {}, whence: {}", 
+                        self.handle, offset, whence);
+        
         let result = (self.file_callbacks.seek)(self.handle, offset, whence);
+        
+        shorebird_debug!("[CFile] Seek callback returned: {}", result);
+        
         if result < 0 {
+            shorebird_error!("[CFile] Seek failed with error code: {}", result);
             Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("CFile seek failed with error code: {}", result),
