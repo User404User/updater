@@ -2,8 +2,9 @@
 
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::{self};
-use std::io::{Cursor, Read, Seek};
+use std::io::{BufWriter, Cursor, Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::error::Error;
 
 use anyhow::{bail, Context, Result};
 use dyn_clone::DynClone;
@@ -727,7 +728,63 @@ where
                 shorebird_info!("  - Isolate data: {} bytes", snapshots.isolate_data.len());
                 shorebird_info!("  - Isolate instructions: {} bytes", snapshots.isolate_instructions.len());
                 
+                // Validate snapshot data before concatenation
+                shorebird_info!("=== Validating snapshot data ===");
+                
+                // Check for empty snapshots
+                if snapshots.vm_data.is_empty() || snapshots.vm_instructions.is_empty() ||
+                   snapshots.isolate_data.is_empty() || snapshots.isolate_instructions.is_empty() {
+                    return Err(anyhow::anyhow!("One or more snapshot sections are empty"));
+                }
+                
+                // Verify each snapshot starts with reasonable data (not all zeros)
+                let has_data = |data: &[u8]| -> bool {
+                    data.len() >= 16 && !data.iter().take(16).all(|&b| b == 0)
+                };
+                
+                if !has_data(&snapshots.vm_data) {
+                    shorebird_warn!("VM data appears to be empty or invalid");
+                }
+                if !has_data(&snapshots.vm_instructions) {
+                    shorebird_warn!("VM instructions appear to be empty or invalid");
+                }
+                if !has_data(&snapshots.isolate_data) {
+                    shorebird_warn!("Isolate data appears to be empty or invalid");
+                }
+                if !has_data(&snapshots.isolate_instructions) {
+                    shorebird_warn!("Isolate instructions appear to be empty or invalid");
+                }
+                
+                // Show first few bytes of each snapshot for debugging
+                shorebird_info!("=== Snapshot Data Analysis ===");
+                let vm_data_preview = &snapshots.vm_data[..std::cmp::min(32, snapshots.vm_data.len())];
+                let vm_instr_preview = &snapshots.vm_instructions[..std::cmp::min(32, snapshots.vm_instructions.len())];
+                let isolate_data_preview = &snapshots.isolate_data[..std::cmp::min(32, snapshots.isolate_data.len())];
+                let isolate_instr_preview = &snapshots.isolate_instructions[..std::cmp::min(32, snapshots.isolate_instructions.len())];
+                
+                shorebird_info!("VM data (32 bytes): {:02x?}", vm_data_preview);
+                shorebird_info!("VM instructions (32 bytes): {:02x?}", vm_instr_preview);
+                shorebird_info!("Isolate data (32 bytes): {:02x?}", isolate_data_preview);
+                shorebird_info!("Isolate instructions (32 bytes): {:02x?}", isolate_instr_preview);
+                
+                // Check for common patterns
+                shorebird_info!("=== Pattern Analysis ===");
+                let check_magic = |name: &str, data: &[u8]| {
+                    if data.len() >= 4 {
+                        let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+                        shorebird_info!("{} magic (LE): 0x{:08x}", name, magic);
+                        let magic_be = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+                        shorebird_info!("{} magic (BE): 0x{:08x}", name, magic_be);
+                    }
+                };
+                
+                check_magic("VM data", vm_data_preview);
+                check_magic("VM instructions", vm_instr_preview);
+                check_magic("Isolate data", isolate_data_preview);
+                check_magic("Isolate instructions", isolate_instr_preview);
+                
                 // Concatenate snapshots to create the base for patching
+                // Based on Dart VM's expected order
                 let mut concatenated_base = Vec::new();
                 concatenated_base.extend_from_slice(&snapshots.vm_data);
                 concatenated_base.extend_from_slice(&snapshots.vm_instructions);
@@ -736,14 +793,97 @@ where
                 
                 shorebird_info!("Total concatenated base size: {} bytes", concatenated_base.len());
                 
-                // Use the concatenated snapshots as the base for patching
-                let base_cursor = Cursor::new(concatenated_base);
-                let mut fresh_r = bipatch::Reader::new(patch_r, base_cursor)?;
+                // Write snapshots to temporary file to avoid potential permission issues
+                // with in-memory cursors over bundle-sourced data
+                let temp_base_path = output_path.with_extension("snapshots.tmp");
+                shorebird_info!("Writing concatenated snapshots to: {:?}", temp_base_path);
+                std::fs::write(&temp_base_path, &concatenated_base)?;
+                shorebird_info!("Successfully wrote {} bytes to temporary snapshot file", concatenated_base.len());
+                
+                // Verify the written file
+                let written_size = std::fs::metadata(&temp_base_path)?.len();
+                shorebird_info!("Verified written file size: {} bytes (expected: {})", 
+                    written_size, concatenated_base.len());
+                
+                if written_size != concatenated_base.len() as u64 {
+                    shorebird_error!("❌ File size mismatch! Expected {}, got {}", 
+                        concatenated_base.len(), written_size);
+                    return Err(anyhow::anyhow!("Temporary file size mismatch"));
+                }
+                
+                // Read back first few bytes to verify
+                let mut verify_file = std::fs::File::open(&temp_base_path)?;
+                let mut verify_buffer = [0u8; 32];
+                verify_file.read_exact(&mut verify_buffer)?;
+                shorebird_info!("Temporary file starts with: {:02x?}", verify_buffer);
+                shorebird_info!("Original concatenated data starts with: {:02x?}", 
+                    &concatenated_base[..32]);
+                
+                // Use the temporary snapshot file as the base for patching
+                shorebird_info!("Opening temporary snapshot file for bipatch: {:?}", temp_base_path);
+                let base_file = std::fs::File::open(&temp_base_path)?;
+                shorebird_info!("Successfully opened snapshot file, creating bipatch reader...");
+                
+                // Verify the snapshot file can be read
+                let metadata = base_file.metadata()?;
+                shorebird_info!("Snapshot file metadata: size={} bytes, readable={}", 
+                    metadata.len(), metadata.permissions().readonly() == false);
+                
+                // Create bipatch reader with detailed logging
+                shorebird_info!("Creating bipatch::Reader with:");
+                shorebird_info!("  - Patch file: {} bytes", 
+                    std::fs::metadata(patch_path)?.len());
+                shorebird_info!("  - Base file: {} bytes", metadata.len());
+                
+                let mut fresh_r = match bipatch::Reader::new(patch_r, base_file) {
+                    Ok(reader) => {
+                        shorebird_info!("✅ Successfully created bipatch reader");
+                        reader
+                    }
+                    Err(e) => {
+                        shorebird_error!("❌ Failed to create bipatch reader: {:?}", e);
+                        return Err(e.into());
+                    }
+                };
+                
+                shorebird_info!("Starting decompression process...");
                 
                 // Write out the resulting patched file to the new location.
                 let mut output_w = BufWriter::new(output_file_w);
-                std::io::copy(&mut fresh_r, &mut output_w)?;
+                
+                shorebird_info!("Starting std::io::copy from bipatch reader to output file...");
+                let start_time = std::time::Instant::now();
+                
+                match std::io::copy(&mut fresh_r, &mut output_w) {
+                    Ok(bytes_written) => {
+                        let elapsed = start_time.elapsed();
+                        shorebird_info!("✅ Successfully copied {} bytes in {:?}", bytes_written, elapsed);
+                        shorebird_info!("Flushing output buffer...");
+                        output_w.flush()?;
+                        shorebird_info!("✅ Output buffer flushed successfully");
+                    }
+                    Err(e) => {
+                        let elapsed = start_time.elapsed();
+                        shorebird_error!("❌ std::io::copy failed after {:?}: {}", elapsed, e);
+                        shorebird_error!("Error kind: {:?}", e.kind());
+                        shorebird_error!("Error source: {:?}", e.source());
+                        
+                        // Try to get more information about what went wrong
+                        if let Some(inner) = e.source() {
+                            shorebird_error!("Inner error: {:?}", inner);
+                        }
+                        
+                        return Err(e.into());
+                    }
+                }
                 shorebird_info!("Patch successfully applied to {:?}", output_path);
+                
+                // Clean up temporary snapshot file
+                if let Err(e) = std::fs::remove_file(&temp_base_path) {
+                    shorebird_warn!("Failed to clean up temporary snapshot file {:?}: {}", temp_base_path, e);
+                } else {
+                    shorebird_info!("Successfully cleaned up temporary snapshot file");
+                }
             }
             Err(e) => {
                 shorebird_error!("❌ Failed to extract snapshots from App binary: {:?}", e);

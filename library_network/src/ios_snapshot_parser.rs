@@ -15,6 +15,7 @@ const CPU_TYPE_ARM64: u32 = 0x0100000c;
 
 /// Symbol names for Dart snapshots in iOS binaries
 /// These are symbols that point to locations in __TEXT segment
+/// Note: In production, these symbols are usually stripped, so we rely on magic byte detection
 const VM_DATA_SYMBOL: &str = "_kDartVmSnapshotData";
 const VM_INSTRUCTIONS_SYMBOL: &str = "_kDartVmSnapshotInstructions";
 const ISOLATE_DATA_SYMBOL: &str = "_kDartIsolateSnapshotData";
@@ -503,10 +504,29 @@ fn extract_via_magic<R: Read + Seek>(
     
     shorebird_info!("\n=== Attempting to extract snapshots from magic byte locations ===");
     
-    // Try to extract snapshots from the first magic offset
+    // Try to extract snapshots using all found magic offsets
     // Based on production logs, we found magic at 0x00cfddc0 and 0x00d06d40
+    if magic_offsets.len() >= 2 {
+        shorebird_info!("\nUsing multiple magic offsets to define snapshot boundaries");
+        
+        match extract_snapshots_from_multiple_magic(&buffer, &magic_offsets, text.fileoff) {
+            Ok(snapshots) => {
+                shorebird_info!("✅ Successfully extracted snapshots using multiple magic offsets");
+                shorebird_info!("  VM data size: {} bytes", snapshots.vm_data.len());
+                shorebird_info!("  VM instructions size: {} bytes", snapshots.vm_instructions.len());
+                shorebird_info!("  Isolate data size: {} bytes", snapshots.isolate_data.len());
+                shorebird_info!("  Isolate instructions size: {} bytes", snapshots.isolate_instructions.len());
+                return Ok(snapshots);
+            }
+            Err(e) => {
+                shorebird_warn!("Failed to extract using multiple magic offsets: {}", e);
+            }
+        }
+    }
+    
+    // Fallback: try each magic offset individually
     for (idx, &offset) in magic_offsets.iter().enumerate() {
-        shorebird_info!("\nTrying magic offset {}: 0x{:x}", idx, offset);
+        shorebird_info!("\nTrying single magic offset {}: 0x{:x}", idx, offset);
         
         match extract_snapshots_at_magic_offset(&buffer, offset) {
             Ok(snapshots) => {
@@ -613,16 +633,197 @@ fn extract_snapshots_at_magic_offset(buffer: &[u8], magic_offset: usize) -> Resu
     
     // For now, return the entire data as vm_data until we can better identify boundaries
     // This is a simplified approach that should work for basic cases
-    let snapshot_data = buffer[data_start..section_end].to_vec();
     
-    // Try to split the data into 4 roughly equal parts
-    let quarter_size = snapshot_data.len() / 4;
+    // In production iOS apps, snapshots are typically concatenated with padding between them
+    // We need to find the boundaries by looking for:
+    // 1. Another magic sequence (0xf5f5dcdc)
+    // 2. Alignment padding (sequences of 0x00)
+    
+    let mut sections = Vec::new();
+    let mut current_pos = data_start;
+    
+    // Look for section boundaries
+    while current_pos < section_end {
+        // Find the end of current section by looking for:
+        // 1. Another magic sequence
+        // 2. A sequence of at least 16 zeros (padding)
+        let mut section_size = 0;
+        let search_end = std::cmp::min(current_pos + max_section_size, section_end);
+        
+        for i in (current_pos + 16)..search_end {
+            // Check for another magic sequence
+            if i + 4 <= buffer.len() && &buffer[i..i + 4] == &[0xf5, 0xf5, 0xdc, 0xdc] {
+                section_size = i - current_pos;
+                break;
+            }
+            
+            // Check for padding (at least 16 consecutive zeros)
+            if i + 16 <= buffer.len() && buffer[i..i + 16].iter().all(|&b| b == 0) {
+                // Found padding, likely end of section
+                section_size = i - current_pos;
+                break;
+            }
+        }
+        
+        if section_size == 0 {
+            // Couldn't find clear boundary, use remaining data
+            section_size = section_end - current_pos;
+        }
+        
+        sections.push((current_pos, section_size));
+        current_pos += section_size;
+        
+        // Skip padding if any
+        while current_pos < section_end && buffer[current_pos] == 0 {
+            current_pos += 1;
+        }
+        
+        if sections.len() >= 4 {
+            break;
+        }
+    }
+    
+    shorebird_info!("  Found {} snapshot sections", sections.len());
+    for (i, (offset, size)) in sections.iter().enumerate() {
+        shorebird_info!("    Section {}: offset=0x{:x}, size={} bytes", i, offset, size);
+    }
+    
+    // Extract sections based on what we found
+    if sections.len() >= 4 {
+        // We found all 4 sections with clear boundaries
+        Ok(DartSnapshots {
+            vm_data: buffer[sections[0].0..sections[0].0 + sections[0].1].to_vec(),
+            vm_instructions: buffer[sections[1].0..sections[1].0 + sections[1].1].to_vec(),
+            isolate_data: buffer[sections[2].0..sections[2].0 + sections[2].1].to_vec(),
+            isolate_instructions: buffer[sections[3].0..sections[3].0 + sections[3].1].to_vec(),
+        })
+    } else if sections.len() == 1 {
+        // Only found one section, try to split it based on typical proportions
+        // VM snapshots are usually smaller than isolate snapshots
+        let total_size = sections[0].1;
+        let vm_data_size = total_size / 8;          // ~12.5%
+        let vm_instr_size = total_size / 8;         // ~12.5%
+        let isolate_data_size = total_size * 3 / 8; // ~37.5%
+        // isolate_instructions gets the rest         // ~37.5%
+        
+        let start = sections[0].0;
+        Ok(DartSnapshots {
+            vm_data: buffer[start..start + vm_data_size].to_vec(),
+            vm_instructions: buffer[start + vm_data_size..start + vm_data_size + vm_instr_size].to_vec(),
+            isolate_data: buffer[start + vm_data_size + vm_instr_size..start + vm_data_size + vm_instr_size + isolate_data_size].to_vec(),
+            isolate_instructions: buffer[start + vm_data_size + vm_instr_size + isolate_data_size..start + total_size].to_vec(),
+        })
+    } else {
+        return Err(anyhow::anyhow!("Unexpected number of snapshot sections: {}", sections.len()));
+    }
+}
+
+/// Extract snapshots using multiple magic offsets to define boundaries
+fn extract_snapshots_from_multiple_magic(
+    buffer: &[u8], 
+    magic_offsets: &[usize], 
+    base_file_offset: u64
+) -> Result<DartSnapshots> {
+    shorebird_info!("  Found {} magic offsets, using them to define boundaries", magic_offsets.len());
+    
+    for (i, &offset) in magic_offsets.iter().enumerate() {
+        let absolute_offset = base_file_offset + offset as u64;
+        shorebird_info!("    Magic {}: buffer_offset=0x{:x}, file_offset=0x{:08x}", i, offset, absolute_offset);
+    }
+    
+    // For the typical case with 2+ magic offsets, we assume they represent different snapshots
+    // The first magic should be the start of the first snapshot (VM data)
+    let first_magic = magic_offsets[0];
+    
+    // Read header of first snapshot
+    if first_magic + 16 > buffer.len() {
+        return Err(anyhow::anyhow!("Not enough data after first magic bytes"));
+    }
+    
+    let _version = u32::from_le_bytes([
+        buffer[first_magic + 4],
+        buffer[first_magic + 5],
+        buffer[first_magic + 6],
+        buffer[first_magic + 7],
+    ]);
+    
+    let _features = u32::from_le_bytes([
+        buffer[first_magic + 8],
+        buffer[first_magic + 9],
+        buffer[first_magic + 10],
+        buffer[first_magic + 11],
+    ]);
+    
+    let _flags = u32::from_le_bytes([
+        buffer[first_magic + 12],
+        buffer[first_magic + 13],
+        buffer[first_magic + 14],
+        buffer[first_magic + 15],
+    ]);
+    
+    // Based on your logs: 0x00cfddc0 and 0x00d06d40
+    // Distance: 0x00d06d40 - 0x00cfddc0 = 0x8F80 = 36736 bytes
+    // This suggests the first snapshot section is about 36KB
+    
+    let first_snapshot_start = first_magic + 16; // After header
+    let first_snapshot_size = if magic_offsets.len() > 1 {
+        // Use distance to next magic as size
+        let next_magic = magic_offsets[1];
+        if next_magic > first_magic {
+            (next_magic - first_magic).saturating_sub(16) // Subtract header size
+        } else {
+            // Fallback if offsets are not in order
+            36736 // Use observed distance from logs
+        }
+    } else {
+        // Single magic, estimate based on typical size
+        36736
+    };
+    
+    shorebird_info!("  First snapshot: start=0x{:x}, size={} bytes", first_snapshot_start, first_snapshot_size);
+    
+    // For iOS, the typical layout after the first snapshot is:
+    // VM Data (smaller) -> VM Instructions -> Isolate Data -> Isolate Instructions (largest)
+    
+    if first_snapshot_start + first_snapshot_size > buffer.len() {
+        return Err(anyhow::anyhow!("First snapshot extends beyond buffer"));
+    }
+    
+    // Extract the first snapshot data
+    let first_snapshot_data = &buffer[first_snapshot_start..first_snapshot_start + first_snapshot_size];
+    
+    // For now, let's use the first snapshot as VM data and split remaining space
+    // This is based on the typical pattern where VM snapshots are smaller
+    
+    // Look for more data after the first snapshot
+    let remaining_start = first_snapshot_start + first_snapshot_size;
+    let remaining_size = if magic_offsets.len() > 1 && magic_offsets[1] + 16 < buffer.len() {
+        // If we have a second magic, start from there
+        let second_magic_start = magic_offsets[1] + 16;
+        // Use remaining buffer from second magic to end
+        let end_pos = buffer.len().min(remaining_start + 10 * 1024 * 1024); // Max 10MB
+        end_pos - second_magic_start
+    } else {
+        // Use remaining buffer with reasonable limit
+        let end_pos = buffer.len().min(remaining_start + 10 * 1024 * 1024); // Max 10MB
+        end_pos - remaining_start
+    };
+    
+    shorebird_info!("  Remaining data: start=0x{:x}, size={} bytes", remaining_start, remaining_size);
+    
+    // Split remaining data into 3 parts (VM instructions, Isolate data, Isolate instructions)
+    let part_size = remaining_size / 3;
+    
+    let vm_instructions_start = remaining_start;
+    let isolate_data_start = vm_instructions_start + part_size;
+    let isolate_instructions_start = isolate_data_start + part_size;
+    let isolate_instructions_end = remaining_start + remaining_size;
     
     Ok(DartSnapshots {
-        vm_data: snapshot_data[..quarter_size].to_vec(),
-        vm_instructions: snapshot_data[quarter_size..quarter_size * 2].to_vec(),
-        isolate_data: snapshot_data[quarter_size * 2..quarter_size * 3].to_vec(),
-        isolate_instructions: snapshot_data[quarter_size * 3..].to_vec(),
+        vm_data: first_snapshot_data.to_vec(),
+        vm_instructions: buffer[vm_instructions_start..vm_instructions_start + part_size].to_vec(),
+        isolate_data: buffer[isolate_data_start..isolate_data_start + part_size].to_vec(),
+        isolate_instructions: buffer[isolate_instructions_start..isolate_instructions_end].to_vec(),
     })
 }
 
@@ -660,42 +861,8 @@ fn find_snap_strings(buffer: &[u8]) {
     }
 }
 
-/// Find potential snapshot patterns in the buffer
-fn find_snapshot_patterns(buffer: &[u8]) -> Vec<usize> {
-    let mut potential_offsets = Vec::new();
-    
-    // Look for various patterns that might indicate snapshot data
-    for i in 0..buffer.len().saturating_sub(16) {
-        let chunk = &buffer[i..i+16];
-        
-        // Pattern 1: High concentration of non-zero bytes
-        let non_zero_count = chunk.iter().filter(|&&b| b != 0).count();
-        
-        // Pattern 2: Specific magic bytes observed in snapshots
-        if non_zero_count > 12 {
-            // Check for specific patterns
-            if chunk[0] == 0xf5 || chunk[0] == 0xf6 || chunk[0] == 0xdc {
-                potential_offsets.push(i);
-            } else if chunk[0..4] == [0x00, 0x00, 0x00, 0x00] && chunk[4] != 0 {
-                potential_offsets.push(i);
-            } else if chunk[0..4] == [0xf5, 0xf5, 0xdc, 0xdc] {
-                // Dart snapshot magic
-                potential_offsets.push(i);
-            }
-        }
-        
-        // Pattern 3: Look for repeating patterns that might be snapshot headers
-        if i + 32 < buffer.len() {
-            // Check for structured data patterns
-            if buffer[i] == buffer[i + 8] && buffer[i + 1] == buffer[i + 9] &&
-               buffer[i] != 0 && buffer[i + 1] != 0 {
-                potential_offsets.push(i);
-            }
-        }
-    }
-    
-    potential_offsets
-}
+// Note: find_snapshot_patterns function was removed as it's no longer used.
+// We now use targeted magic byte search instead of general pattern matching.
 
 /// Log binary content at key offsets
 fn log_key_offsets(buffer: &[u8], base_offset: u64) {
