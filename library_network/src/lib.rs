@@ -22,6 +22,12 @@ mod yaml;
 #[cfg(any(target_os = "android", test))]
 mod android;
 
+#[cfg(target_os = "ios")]
+mod ios_snapshots;
+
+#[cfg(target_os = "ios")]
+mod ios_snapshot_parser;
+
 #[cfg(test)]
 mod test_utils;
 

@@ -710,13 +710,63 @@ where
         }
     });
 
-    // Do the patch, using the uncompressed patch data from the pipe.
-    let mut fresh_r = bipatch::Reader::new(patch_r, base_r)?;
-
-    // Write out the resulting patched file to the new location.
-    let mut output_w = BufWriter::new(output_file_w);
-    std::io::copy(&mut fresh_r, &mut output_w)?;
-    shorebird_info!("Patch successfully applied to {:?}", output_path);
+    // On iOS, we need to extract snapshots from the App binary first
+    #[cfg(target_os = "ios")]
+    {
+        shorebird_info!("=== iOS: Extracting snapshots from App binary ===");
+        
+        // Convert base_r to a mutable reader
+        let mut app_reader = base_r;
+        
+        // Extract snapshots from the App binary
+        match crate::ios_snapshot_parser::extract_snapshots_from_app(&mut app_reader) {
+            Ok(snapshots) => {
+                shorebird_info!("✅ Successfully extracted Dart snapshots:");
+                shorebird_info!("  - VM data: {} bytes", snapshots.vm_data.len());
+                shorebird_info!("  - VM instructions: {} bytes", snapshots.vm_instructions.len());
+                shorebird_info!("  - Isolate data: {} bytes", snapshots.isolate_data.len());
+                shorebird_info!("  - Isolate instructions: {} bytes", snapshots.isolate_instructions.len());
+                
+                // Concatenate snapshots to create the base for patching
+                let mut concatenated_base = Vec::new();
+                concatenated_base.extend_from_slice(&snapshots.vm_data);
+                concatenated_base.extend_from_slice(&snapshots.vm_instructions);
+                concatenated_base.extend_from_slice(&snapshots.isolate_data);
+                concatenated_base.extend_from_slice(&snapshots.isolate_instructions);
+                
+                shorebird_info!("Total concatenated base size: {} bytes", concatenated_base.len());
+                
+                // Use the concatenated snapshots as the base for patching
+                let base_cursor = Cursor::new(concatenated_base);
+                let mut fresh_r = bipatch::Reader::new(patch_r, base_cursor)?;
+                
+                // Write out the resulting patched file to the new location.
+                let mut output_w = BufWriter::new(output_file_w);
+                std::io::copy(&mut fresh_r, &mut output_w)?;
+                shorebird_info!("Patch successfully applied to {:?}", output_path);
+            }
+            Err(e) => {
+                shorebird_error!("❌ Failed to extract snapshots from App binary: {:?}", e);
+                shorebird_error!("Falling back to using the whole App file as base");
+                
+                // Fallback: use the whole App file as base (may not work correctly)
+                let mut fresh_r = bipatch::Reader::new(patch_r, app_reader)?;
+                let mut output_w = BufWriter::new(output_file_w);
+                std::io::copy(&mut fresh_r, &mut output_w)?;
+                shorebird_info!("Patch applied using whole App file as base");
+            }
+        }
+    }
+    
+    // For non-iOS platforms, use the base as-is
+    #[cfg(not(target_os = "ios"))]
+    {
+        let mut fresh_r = bipatch::Reader::new(patch_r, base_r)?;
+        let mut output_w = BufWriter::new(output_file_w);
+        std::io::copy(&mut fresh_r, &mut output_w)?;
+        shorebird_info!("Patch successfully applied to {:?}", output_path);
+    }
+    
     Ok(())
 }
 
