@@ -54,18 +54,18 @@ class ShorebirdUpdaterImpl implements ShorebirdUpdater {
   bool get isAvailable => _isAvailable;
 
   @override
-  Future<Patch?> readCurrentPatch() => _readPatch(_updater.currentPatchNumber);
+  Future<Patch?> readCurrentPatch() => _readPatchAsync(_updater.currentPatchNumber);
 
   @override
-  Future<Patch?> readNextPatch() => _readPatch(_updater.nextPatchNumber);
+  Future<Patch?> readNextPatch() => _readPatchAsync(_updater.nextPatchNumber);
 
-  Future<Patch?> _readPatch(int Function() fn) async {
+  Future<Patch?> _readPatchAsync(Future<int?> Function() fn) async {
     if (!_isAvailable) return null;
     return _run(
-      () {
+      () async {
         try {
-          final patchNumber = fn();
-          return patchNumber > 0 ? Patch(number: patchNumber) : null;
+          final patchNumber = await fn();
+          return patchNumber != null && patchNumber > 0 ? Patch(number: patchNumber) : null;
         } catch (error) {
           throw ReadPatchException(message: '$error');
         }
@@ -79,7 +79,7 @@ class ShorebirdUpdaterImpl implements ShorebirdUpdater {
 
     // First, check to see whether an update is available for download.
     final isUpdateAvailable =
-        await _run(() => _updater.checkForDownloadableUpdate(track: track));
+        await _run(() async => await _updater.checkForDownloadableUpdate(track: track));
     if (isUpdateAvailable) return UpdateStatus.outdated;
 
     // If no new update is available for download, see if a new patch exists

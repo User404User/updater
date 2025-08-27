@@ -23,6 +23,7 @@ dependencies:
     sdk: flutter
   meta: ^1.9.1
   path_provider: ^2.1.1
+  shorebird_code_push: ^1.1.6
 
 dev_dependencies:
   ffigen: ">=8.0.2 <17.0.0"

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shorebird_code_push/shorebird_code_push.dart';
 
 import 'package:shorebird_code_push_network/src/generated/updater_bindings.g.dart';
 import 'package:shorebird_code_push_network/src/generated/ios_bindings.dart';
@@ -94,8 +95,6 @@ class UpdaterNetwork extends Updater {
   /// The ffi bindings to the network library.
   static UpdaterBindings? _bindings;
   
-  /// iOS-specific bindings for direct symbol access
-  static IOSBindings? _iosBindings;
 
   /// The method channel for platform-specific operations.
   static const MethodChannel _channel = MethodChannel('shorebird_code_push_network');
@@ -107,7 +106,7 @@ class UpdaterNetwork extends Updater {
     if (Platform.isAndroid) {
       _loadAndroidLibrary();
     } else if (Platform.isIOS) {
-      _loadIOSLibrary();
+      // _loadIOSLibrary();
     } else {
       throw UnsupportedError(
         'Platform ${Platform.operatingSystem} not supported for network library'
@@ -117,21 +116,7 @@ class UpdaterNetwork extends Updater {
     return _bindings!;
   }
   
-  /// Get iOS-specific bindings for direct symbol access
-  static IOSBindings get iosBindings {
-    if (_iosBindings != null) return _iosBindings!;
-    throw Exception('IOSBindings not initialized. Call initializeIOSBindings() first.');
-  }
-  
-  /// Initialize iOS bindings asynchronously
-  static Future<void> initializeIOSBindings() async {
-    if (_iosBindings != null) return;
-    
-    debugPrint('Initializing IOSBindings...');
-    _iosBindings = IOSBindings();
-    await _iosBindings!.ensureInitialized();
-    debugPrint('IOSBindings initialized successfully');
-  }
+
 
   /// Load Android dynamic library with proper error handling
   static void _loadAndroidLibrary() {
@@ -188,39 +173,20 @@ class UpdaterNetwork extends Updater {
     }
   }
 
-  /// Load iOS static library with proper verification
-  static void _loadIOSLibrary() {
-    try {
-      debugPrint('Loading iOS network library...');
-      
-      // iOS uses static linking - library should be already linked
-      final library = ffi.DynamicLibrary.process();
-      _bindings = UpdaterBindings(library);
-      
-      // Note: iOS-specific bindings will be initialized asynchronously when needed
-      debugPrint('iOS network library loaded successfully (bindings pending async init)');
-      
-    } catch (e) {
-      debugPrint('ERROR in _loadIOSLibrary: $e');
-      throw Exception('Failed to load iOS network library: $e');
-    }
-  }
-
-
   /// The currently active patch number.
   @override
-  int currentPatchNumber() {
+  Future<int?> currentPatchNumber() async {
     if (Platform.isIOS) {
-      return iosBindings.shorebird_current_boot_patch_number_net();
+      return await ShorebirdCodePush().currentPatchNumber();
     }
     return networkBindings.shorebird_current_boot_patch_number();
   }
 
   /// The next patch number that will be loaded.
   @override
-  int nextPatchNumber() {
+  Future<int?> nextPatchNumber() async {
     if (Platform.isIOS) {
-      return iosBindings.shorebird_next_boot_patch_number_net();
+      return await ShorebirdCodePush().nextPatchNumber();
     }
     return networkBindings.shorebird_next_boot_patch_number();
   }
@@ -229,7 +195,7 @@ class UpdaterNetwork extends Updater {
   @override
   void downloadUpdate() {
     if (Platform.isIOS) {
-      iosBindings.shorebird_update_net();
+       ShorebirdCodePush().downloadUpdateIfAvailable();
     } else {
       networkBindings.shorebird_update();
     }
@@ -237,14 +203,12 @@ class UpdaterNetwork extends Updater {
 
   /// Whether a new patch is available for download.
   @override
-  bool checkForDownloadableUpdate({UpdateTrack? track}) {
+  Future<bool> checkForDownloadableUpdate({UpdateTrack? track}) async {
     final trackPtr = track == null 
       ? ffi.nullptr 
       : track.name.toNativeUtf8().cast<Char>();
     if (Platform.isIOS) {
-      return iosBindings.shorebird_check_for_downloadable_update_net(
-        trackPtr
-      );
+      return ShorebirdCodePush().isNewPatchAvailableForDownload();
     }
     return networkBindings.shorebird_check_for_downloadable_update(trackPtr);
   }
@@ -256,7 +220,7 @@ class UpdaterNetwork extends Updater {
       ? ffi.nullptr 
       : track.name.toNativeUtf8().cast<Char>();
     if (Platform.isIOS) {
-      return iosBindings.shorebird_update_with_result_net(trackPtr);
+      // return iosBindings.shorebird_update_with_result_net(trackPtr);
     }
     return networkBindings.shorebird_update_with_result(trackPtr);
   }
@@ -265,7 +229,7 @@ class UpdaterNetwork extends Updater {
   @override
   void freeUpdateResult(Pointer<UpdateResult> ptr) {
     if (Platform.isIOS) {
-      iosBindings.shorebird_free_update_result_net(ptr);
+      // iosBindings.shorebird_free_update_result_net(ptr);
     } else {
       networkBindings.shorebird_free_update_result(ptr);
     }
@@ -281,7 +245,8 @@ class UpdaterNetwork extends Updater {
       bool result;
       if (Platform.isIOS) {
         debugPrint('Calling iOS function: shorebird_update_base_url_net');
-        result = iosBindings.shorebird_update_base_url_net(urlPtr);
+        //hook实现
+        result = true;
       } else {
         debugPrint('Calling Android function: shorebird_update_base_url');
         result = networkBindings.shorebird_update_base_url(urlPtr);
@@ -309,7 +274,7 @@ class UpdaterNetwork extends Updater {
       // Pass null pointer to clear the download URL
       bool result;
       if (Platform.isIOS) {
-        result = iosBindings.shorebird_update_download_url_net(nullptr);
+        result = false;
       } else {
         result = networkBindings.shorebird_update_download_url(nullptr);
       }
@@ -323,7 +288,8 @@ class UpdaterNetwork extends Updater {
       bool result;
       if (Platform.isIOS) {
         debugPrint('Calling iOS function: shorebird_update_download_url_net');
-        result = iosBindings.shorebird_update_download_url_net(urlPtr);
+        //hook实现
+        result = true;
       } else {
         debugPrint('Calling Android function: shorebird_update_download_url');
         result = networkBindings.shorebird_update_download_url(urlPtr);
@@ -339,74 +305,6 @@ class UpdaterNetwork extends Updater {
       debugPrint('ERROR in updateDownloadUrl: $e');
       malloc.free(urlPtr);
       rethrow;
-    }
-  }
-  
-  /// Get the current app_id from the network library
-  String getAppId() {
-    debugPrint('Getting app_id from network library...');
-    
-    Pointer<Char>? resultPtr;
-    try {
-      if (Platform.isIOS) {
-        resultPtr = iosBindings.shorebird_get_app_id_net();
-      } else {
-        resultPtr = networkBindings.shorebird_get_app_id();
-      }
-      
-      if (resultPtr == nullptr) {
-        return 'not-available';
-      }
-      
-      final appId = resultPtr.cast<Utf8>().toDartString();
-      
-      // Free the string allocated by Rust
-      if (Platform.isIOS) {
-        iosBindings.shorebird_free_string_net(resultPtr);
-      } else {
-        networkBindings.shorebird_free_string(resultPtr.cast<Char>());
-      }
-      
-      debugPrint('App ID: $appId');
-      return appId;
-      
-    } catch (e) {
-      debugPrint('Error getting app_id: $e');
-      return 'error';
-    }
-  }
-  
-  /// Get the current release version from the network library
-  String getReleaseVersion() {
-    debugPrint('Getting release version from network library...');
-    
-    Pointer<Char>? resultPtr;
-    try {
-      if (Platform.isIOS) {
-        resultPtr = iosBindings.shorebird_get_release_version_net();
-      } else {
-        resultPtr = networkBindings.shorebird_get_release_version();
-      }
-      
-      if (resultPtr == nullptr) {
-        return '0.0.0';
-      }
-      
-      final version = resultPtr.cast<Utf8>().toDartString();
-      
-      // Free the string allocated by Rust
-      if (Platform.isIOS) {
-        iosBindings.shorebird_free_string_net(resultPtr);
-      } else {
-        networkBindings.shorebird_free_string(resultPtr.cast<Char>());
-      }
-      
-      debugPrint('Release version: $version');
-      return version;
-      
-    } catch (e) {
-      debugPrint('Error getting release version: $e');
-      return '0.0.0';
     }
   }
 }

@@ -12,7 +12,7 @@ class LibappPathHelper {
     if (Platform.isAndroid) {
       return _getAndroidLibappPaths();
     } else if (Platform.isIOS) {
-      return _getIOSLibappPaths();
+      return null;
     }
     return null;
   }
@@ -35,37 +35,7 @@ class LibappPathHelper {
     debugPrint('[LibappPathHelper] Using empty libapp paths for Android');
     return null;
   }
-  
-  /// Get iOS libapp paths
-  static Future<List<String>?> _getIOSLibappPaths() async {
-    try {
-      // Use the native method to get App.framework paths
-      final result = await _platform.invokeMethod<List<dynamic>>('getLibappPaths');
-      if (result != null && result.isNotEmpty) {
-        debugPrint('[LibappPathHelper] Got iOS App paths from native: $result');
-        return result.cast<String>();
-      }
-    } catch (e) {
-      debugPrint('[LibappPathHelper] Failed to get iOS App paths: $e');
-    }
-    
-    // Fallback: try to construct the path
-    try {
-      final bundlePath = await _platform.invokeMethod<String>('getBundlePath');
-      if (bundlePath != null) {
-        final appPath = path.join(bundlePath, 'Frameworks', 'App.framework', 'App');
-        if (await File(appPath).exists()) {
-          debugPrint('[LibappPathHelper] Found iOS App path (fallback): $appPath');
-          return [appPath];
-        }
-      }
-    } catch (e) {
-      debugPrint('[LibappPathHelper] Failed to get iOS bundle path: $e');
-    }
-    
-    debugPrint('[LibappPathHelper] Using empty libapp paths for iOS');
-    return null;
-  }
+
   
   /// Get the architecture-specific library directory name
   static Future<String> getArchLibraryDir() async {

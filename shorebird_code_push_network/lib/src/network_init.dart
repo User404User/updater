@@ -104,10 +104,9 @@ class NetworkUpdaterInitializer {
           debugPrint('  - codeCacheDir: $codeCacheDir');
         } else if (Platform.isIOS) {
           // iOS paths are different
-          final appDir = await getApplicationDocumentsDirectory();
-          final cacheDir = await getTemporaryDirectory();
-          appStorageDir = appDir.path;
-          codeCacheDir = cacheDir.path;
+
+          appStorageDir = "";
+          codeCacheDir = "";
           debugPrint('iOS: Using standard path_provider paths');
         } else {
           // Other platforms
@@ -166,19 +165,7 @@ class NetworkUpdaterInitializer {
       // Set libapp path for iOS file callbacks
       if (Platform.isIOS && config.originalLibappPaths != null && config.originalLibappPaths!.isNotEmpty) {
         // Use the original native path, not Flutter's modified path
-        final nativePath = config.originalLibappPaths!.first;
-        debugPrint('[NetworkInit] Setting native libapp path for iOS: $nativePath');
-        _setLibappPath(nativePath);
-        
-        // Prepare iOS libapp file by copying to temp directory
-        debugPrint('[NetworkInit] Preparing iOS libapp for file access...');
-        try {
-          await _prepareIOSLibapp(nativePath);
-          debugPrint('[NetworkInit] iOS libapp prepared successfully');
-        } catch (e) {
-          debugPrint('[NetworkInit] ERROR: Failed to prepare iOS libapp: $e');
-          debugPrint('[NetworkInit] Continuing with original path, may cause issues');
-        }
+
       }
       
       // Initialize the native library with corrected paths
@@ -198,8 +185,8 @@ class NetworkUpdaterInitializer {
           try {
             bool urlResult;
             if (Platform.isIOS) {
-              final iosBindings = UpdaterNetwork.iosBindings;
-              urlResult = iosBindings.shorebird_update_download_url_net(downloadUrlPtr);
+              //初始化hook
+              urlResult = true;
             } else {
               final bindings = UpdaterNetwork.networkBindings;
               urlResult = bindings.shorebird_update_download_url(downloadUrlPtr);
@@ -289,12 +276,7 @@ class NetworkUpdaterInitializer {
       
       bool result;
       if (Platform.isIOS) {
-        // Initialize iOS bindings first
-        await UpdaterNetwork.initializeIOSBindings();
-        
-        // Use iOS-specific bindings for initialization
-        final iosBindings = UpdaterNetwork.iosBindings;
-        result = iosBindings.shorebird_init_network(appParams, networkConfig, fileCallbacks);
+        result = true;
       } else {
         // Use standard bindings for Android
         final bindings = UpdaterNetwork.networkBindings;
@@ -306,21 +288,7 @@ class NetworkUpdaterInitializer {
       if (result) {
         // Verify initialization by getting app ID
         if (Platform.isIOS) {
-          final iosBindings = UpdaterNetwork.iosBindings;
-          final appIdResult = iosBindings.shorebird_get_app_id_net();
-          if (appIdResult != nullptr) {
-            final appId = appIdResult.cast<Utf8>().toDartString();
-            debugPrint('[NetworkUpdater] Verified app ID: $appId');
-            iosBindings.shorebird_free_string_net(appIdResult);
-          }
-          
-          // Get release version
-          final versionResult = iosBindings.shorebird_get_release_version_net();
-          if (versionResult != nullptr) {
-            final version = versionResult.cast<Utf8>().toDartString();
-            debugPrint('[NetworkUpdater] Verified release version: $version');
-            iosBindings.shorebird_free_string_net(versionResult);
-          }
+         //初始化hook可以
         } else {
           final bindings = UpdaterNetwork.networkBindings;
           final appIdResult = bindings.shorebird_get_app_id();

@@ -20,11 +20,11 @@ class Updater {
       UpdaterBindings(ffi.DynamicLibrary.process());
 
   /// The currently active patch number.
-  int currentPatchNumber() => bindings.shorebird_current_boot_patch_number();
+  Future<int?> currentPatchNumber() => bindings.shorebird_current_boot_patch_number();
 
   /// The next patch number that will be loaded. Will be the same as
   /// currentPatchNumber if no new patch is available.
-  int nextPatchNumber() => bindings.shorebird_next_boot_patch_number();
+  Future<int?> nextPatchNumber() => bindings.shorebird_next_boot_patch_number();
 
   /// Downloads the latest patch, if available.
   void downloadUpdate() => bindings.shorebird_update();
@@ -32,7 +32,7 @@ class Updater {
   // New Methods added to support v2.0.0 of the Dart APIs //
 
   /// Whether a new patch is available for download.
-  bool checkForDownloadableUpdate({UpdateTrack? track}) =>
+  Future<bool> checkForDownloadableUpdate({UpdateTrack? track}) =>
       bindings.shorebird_check_for_downloadable_update(
         track == null ? ffi.nullptr : track.name.toNativeUtf8().cast<Char>(),
       );

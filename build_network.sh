@@ -45,7 +45,6 @@ log_info "🧹 清理构建环境..."
 log_info "   清理构建输出目录: $OUTPUT_DIR"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/android"
-mkdir -p "$OUTPUT_DIR/ios"
 
 # 2. 清理 Flutter 插件的 Android jniLibs 目录
 ANDROID_JNILIBS_DIR="$PLUGIN_DIR/android/src/main/jniLibs"
@@ -59,16 +58,7 @@ if [ -d "$ANDROID_JNILIBS_DIR" ]; then
     mkdir -p "$ANDROID_JNILIBS_DIR/x86"
 fi
 
-# 3. 清理 Flutter 插件的 iOS 目录中的库文件
-IOS_PLUGIN_DIR="$PLUGIN_DIR/ios"
-if [ -d "$IOS_PLUGIN_DIR" ]; then
-    log_info "   清理 iOS 插件目录中的库文件: $IOS_PLUGIN_DIR"
-    # 删除旧的静态库文件
-    rm -f "$IOS_PLUGIN_DIR"/libshorebird_updater_network*.a
-    rm -f "$IOS_PLUGIN_DIR/shorebird_updater_network.h"
-    # 删除旧的 XCFramework
-    rm -rf "$IOS_PLUGIN_DIR/ShorebirdUpdaterNetwork.xcframework"
-fi
+# iOS 使用官方包，不需要生成库文件
 
 # 4. 清理 Rust 构建缓存
 log_info "   清理 Rust 构建缓存: $CARGO_TARGET_DIR"
@@ -175,142 +165,8 @@ else
     log_error "cargo-ndk 未安装，跳过 Android 构建"
 fi
 
-# 构建 iOS
-log_info "🍎 构建 iOS 网络库..."
-export IPHONEOS_DEPLOYMENT_TARGET="11.0"
-
-# iOS 设备版本 (arm64)
-export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-cargo build --release --target aarch64-apple-ios
-
-# iOS 模拟器版本
-export SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
-
-# x86_64 模拟器
-cargo build --release --target x86_64-apple-ios
-
-# arm64 模拟器 (M1)
-cargo build --release --target aarch64-apple-ios-sim
-
-# 创建 XCFramework
-log_info "📦 创建 XCFramework..."
-
-# 创建临时目录存放framework
-mkdir -p "$OUTPUT_DIR/ios/temp_frameworks/device"
-mkdir -p "$OUTPUT_DIR/ios/temp_frameworks/simulator"
-DEVICE_FRAMEWORK="$OUTPUT_DIR/ios/temp_frameworks/device/ShorebirdUpdaterNetwork.framework"
-SIMULATOR_FRAMEWORK="$OUTPUT_DIR/ios/temp_frameworks/simulator/ShorebirdUpdaterNetwork.framework"
-
-# 创建设备版本 framework
-mkdir -p "$DEVICE_FRAMEWORK"
-if [ -f "$CARGO_TARGET_DIR/aarch64-apple-ios/release/libshorebird_updater_network.a" ]; then
-    cp "$CARGO_TARGET_DIR/aarch64-apple-ios/release/libshorebird_updater_network.a" \
-       "$DEVICE_FRAMEWORK/ShorebirdUpdaterNetwork"
-    log_success "✓ iOS 设备库 (arm64)"
-fi
-
-# 创建模拟器通用库
-if [ -f "$CARGO_TARGET_DIR/x86_64-apple-ios/release/libshorebird_updater_network.a" ] && \
-   [ -f "$CARGO_TARGET_DIR/aarch64-apple-ios-sim/release/libshorebird_updater_network.a" ]; then
-    
-    # 创建模拟器版本 framework
-    mkdir -p "$SIMULATOR_FRAMEWORK"
-    lipo -create \
-        "$CARGO_TARGET_DIR/x86_64-apple-ios/release/libshorebird_updater_network.a" \
-        "$CARGO_TARGET_DIR/aarch64-apple-ios-sim/release/libshorebird_updater_network.a" \
-        -output "$SIMULATOR_FRAMEWORK/ShorebirdUpdaterNetwork"
-    log_success "✓ iOS 模拟器通用库"
-fi
-
-# 创建 Info.plist 文件（设备版本）
-cat > "$DEVICE_FRAMEWORK/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>ShorebirdUpdaterNetwork</string>
-    <key>CFBundleIdentifier</key>
-    <string>dev.shorebird.ShorebirdUpdaterNetwork</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>ShorebirdUpdaterNetwork</string>
-    <key>CFBundlePackageType</key>
-    <string>FMWK</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>CFBundleSupportedPlatforms</key>
-    <array>
-        <string>iPhoneOS</string>
-    </array>
-    <key>MinimumOSVersion</key>
-    <string>11.0</string>
-</dict>
-</plist>
-EOF
-
-# 创建 Info.plist 文件（模拟器版本）
-cat > "$SIMULATOR_FRAMEWORK/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>ShorebirdUpdaterNetwork</string>
-    <key>CFBundleIdentifier</key>
-    <string>dev.shorebird.ShorebirdUpdaterNetwork</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>ShorebirdUpdaterNetwork</string>
-    <key>CFBundlePackageType</key>
-    <string>FMWK</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>CFBundleSupportedPlatforms</key>
-    <array>
-        <string>iPhoneSimulator</string>
-    </array>
-    <key>MinimumOSVersion</key>
-    <string>11.0</string>
-</dict>
-</plist>
-EOF
-
-# 创建 Headers 目录并复制头文件
-mkdir -p "$DEVICE_FRAMEWORK/Headers"
-mkdir -p "$SIMULATOR_FRAMEWORK/Headers"
-if [ -f "include/updater.h" ]; then
-    cp "include/updater.h" "$DEVICE_FRAMEWORK/Headers/"
-    cp "include/updater.h" "$SIMULATOR_FRAMEWORK/Headers/"
-fi
-
-# 创建 XCFramework
-if [ -f "$DEVICE_FRAMEWORK/ShorebirdUpdaterNetwork" ] && [ -f "$SIMULATOR_FRAMEWORK/ShorebirdUpdaterNetwork" ]; then
-    xcodebuild -create-xcframework \
-        -framework "$DEVICE_FRAMEWORK" \
-        -framework "$SIMULATOR_FRAMEWORK" \
-        -output "$OUTPUT_DIR/ios/ShorebirdUpdaterNetwork.xcframework"
-    
-    if [ $? -eq 0 ]; then
-        log_success "✓ XCFramework 创建成功"
-        # 清理临时文件
-        rm -rf "$OUTPUT_DIR/ios/temp_frameworks"
-    else
-        log_error "✗ XCFramework 创建失败"
-    fi
-else
-    log_error "✗ Framework 文件不存在，无法创建 XCFramework"
-fi
+# iOS 使用官方包和 DNS Hook，不需要构建库
+log_info "🍎 iOS 使用官方 Shorebird 包 + DNS Hook，跳过库构建"
 
 # 生成头文件
 log_info "📄 生成头文件..."
@@ -332,16 +188,8 @@ if [ -d "$OUTPUT_DIR/android" ]; then
     log_success "✓ Android 库已复制到插件"
 fi
 
-# 复制 iOS XCFramework
-if [ -d "$OUTPUT_DIR/ios/ShorebirdUpdaterNetwork.xcframework" ]; then
-    # 先删除旧的静态库文件
-    rm -f "$PLUGIN_DIR/ios/libshorebird_updater_network"*.a
-    rm -f "$PLUGIN_DIR/ios/shorebird_updater_network.h"
-    
-    # 复制 XCFramework
-    cp -r "$OUTPUT_DIR/ios/ShorebirdUpdaterNetwork.xcframework" "$PLUGIN_DIR/ios/"
-    log_success "✓ iOS XCFramework 已复制到插件"
-fi
+# iOS 不需要复制库文件
+log_info "✓ iOS 使用官方包，无需复制库文件"
 
 # 生成使用说明
 cat > "$OUTPUT_DIR/README.md" << 'EOF'
@@ -355,7 +203,7 @@ cat > "$OUTPUT_DIR/README.md" << 'EOF'
 - `android/*/libshorebird_updater_network.so` - 各架构的动态库
 
 ### iOS
-- `ios/ShorebirdUpdaterNetwork.xcframework` - XCFramework（包含设备和模拟器版本）
+- iOS 使用官方 Shorebird 包 + DNS Hook 实现，无需额外库文件
 
 ### 头文件
 - `shorebird_updater_network.h` - C API 头文件
@@ -366,9 +214,7 @@ cat > "$OUTPUT_DIR/README.md" << 'EOF'
 将对应架构的 .so 文件复制到 `app/src/main/jniLibs/{架构}/`
 
 ### iOS
-1. 将 `ShorebirdUpdaterNetwork.xcframework` 添加到 Xcode 项目
-2. 在 Frameworks, Libraries, and Embedded Content 中添加 XCFramework
-3. 设置为 "Do Not Embed"
+iOS 使用官方 Shorebird 包，网络拦截通过 DNS Hook 自动实现
 
 ### Flutter
 使用 `ShorebirdCodePushNetwork` 类：
