@@ -16,4 +16,9 @@ void shorebird_set_custom_cdn_host(const char *cdn_host);
 const char* shorebird_get_custom_api_host(void);
 const char* shorebird_get_custom_cdn_host(void);
 
+// 通用域名映射接口
+void shorebird_add_host_mapping(const char *original_host, const char *redirect_host);
+void shorebird_remove_host_mapping(const char *original_host);
+void shorebird_clear_all_host_mappings(void);
+
 #endif /* ShorebirdNetworkHook_h */

@@ -161,12 +161,7 @@ class NetworkUpdaterInitializer {
         await downloadDirectory.create(recursive: true);
         debugPrint('Created download directory: $downloadDir');
       }
-      
-      // Set libapp path for iOS file callbacks
-      if (Platform.isIOS && config.originalLibappPaths != null && config.originalLibappPaths!.isNotEmpty) {
-        // Use the original native path, not Flutter's modified path
 
-      }
       
       // Initialize the native library with corrected paths
       final result = await _initializeNative(
@@ -179,27 +174,54 @@ class NetworkUpdaterInitializer {
         _initialized = true;
         debugPrint('Network updater initialized successfully');
         
+        // Set base URL if provided
+        if (config.baseUrl != null && Platform.isIOS) {
+          debugPrint('iOS: Setting base URL host mapping from config');
+          final uri = Uri.tryParse(config.baseUrl!);
+          if (uri != null && uri.host.isNotEmpty) {
+            try {
+              await MethodChannel('shorebird_code_push_network').invokeMethod('updateBaseUrl', {
+                'baseUrl': config.baseUrl,
+              });
+              debugPrint('iOS: Base URL host mapping set to: ${uri.host}');
+            } catch (e) {
+              debugPrint('iOS: Error setting base URL host mapping: $e');
+            }
+          }
+        }
+        
         // Set download URL if provided
         if (config.downloadUrl != null) {
-          final downloadUrlPtr = config.downloadUrl!.toNativeUtf8().cast<Char>();
-          try {
-            bool urlResult;
-            if (Platform.isIOS) {
-              //初始化hook
-              urlResult = true;
-            } else {
-              final bindings = UpdaterNetwork.networkBindings;
-              urlResult = bindings.shorebird_update_download_url(downloadUrlPtr);
+          if (Platform.isIOS) {
+            debugPrint('iOS: Setting download URL host mapping from config');
+            final uri = Uri.tryParse(config.downloadUrl!);
+            if (uri != null && uri.host.isNotEmpty) {
+              try {
+                await MethodChannel('shorebird_code_push_network').invokeMethod('updateDownloadUrl', {
+                  'downloadUrl': config.downloadUrl,
+                });
+                debugPrint('iOS: Download URL host mapping set to: ${uri.host}');
+              } catch (e) {
+                debugPrint('iOS: Error setting download URL host mapping: $e');
+              }
             }
-            debugPrint('Download URL update result: $urlResult');
-          } finally {
-            malloc.free(downloadUrlPtr);
+          } else {
+            // Android
+            final downloadUrlPtr = config.downloadUrl!.toNativeUtf8().cast<Char>();
+            try {
+              final bindings = UpdaterNetwork.networkBindings;
+              final urlResult = bindings.shorebird_update_download_url(downloadUrlPtr);
+              debugPrint('Android: Download URL update result: $urlResult');
+            } finally {
+              malloc.free(downloadUrlPtr);
+            }
           }
         }
       } else {
         debugPrint('Failed to initialize network updater');
       }
-      
+
+
       return result;
       
     } catch (e) {
@@ -214,14 +236,7 @@ class NetworkUpdaterInitializer {
     required String codeCacheDir,
     required NetworkUpdaterConfig config,
   }) async {
-    debugPrint('[NetworkUpdater] Starting native initialization...');
-    debugPrint('[NetworkUpdater] App ID: ${config.appId}');
-    debugPrint('[NetworkUpdater] Release version: ${config.releaseVersion}');
-    debugPrint('[NetworkUpdater] Channel: ${config.channel}');
-    debugPrint('[NetworkUpdater] Auto update: ${config.autoUpdate}');
-    debugPrint('[NetworkUpdater] Base URL: ${config.baseUrl ?? 'default'}');
-    debugPrint('[NetworkUpdater] Download URL: ${config.downloadUrl ?? 'none'}');
-    
+
     // Allocate memory for parameters
     final appParams = malloc<AppParameters>();
     final networkConfig = malloc<NetworkConfig>();
@@ -288,7 +303,8 @@ class NetworkUpdaterInitializer {
       if (result) {
         // Verify initialization by getting app ID
         if (Platform.isIOS) {
-         //初始化hook可以
+          // iOS: 初始化成功，域名映射已设置
+          debugPrint('[NetworkUpdater] iOS initialization verified');
         } else {
           final bindings = UpdaterNetwork.networkBindings;
           final appIdResult = bindings.shorebird_get_app_id();

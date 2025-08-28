@@ -14,21 +14,13 @@ Shorebird Updater is a Rust-based code push system for Flutter applications that
 
 ### Build Commands
 ```bash
-# Build the network version (all platforms)
+# Build the network version (Android only, iOS uses native implementation)
 ./build_network.sh
 
 # Build for Android manually
 cargo ndk -t armeabi-v7a -t arm64-v8a -t x86 -t x86_64 build --release
 
-# Build for iOS device
-export IPHONEOS_DEPLOYMENT_TARGET="11.0"
-export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-cargo build --release --target aarch64-apple-ios
-
-# Build for iOS simulator
-export SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
-cargo build --release --target x86_64-apple-ios
-cargo build --release --target aarch64-apple-ios-sim
+# iOS uses native implementation, no Rust library build required
 ```
 
 ### Test Commands
@@ -93,8 +85,8 @@ updater/
 ### Platform Integration
 
 - **Android**: Produces `.so` files for each architecture (armeabi-v7a, arm64-v8a, x86, x86_64)
-- **iOS**: Produces XCFramework with device and simulator architectures
-- **Dart FFI**: Uses `ffigen` to generate bindings from C headers
+- **iOS**: Uses native implementation, no Rust library required
+- **Dart FFI**: Uses `ffigen` to generate bindings from C headers (Android only)
 
 ### File Locations
 
@@ -135,8 +127,8 @@ The network library needs access to libapp.so for patch compression. Here's how 
 - For testing with extracted APKs: `LibappPathHelper.getManualLibappPaths(basePath: '/path/to/apk', architecture: 'arm64-v8a')`
 
 #### iOS
-- App binary is at: `<bundle>/Frameworks/App.framework/App`
-- The helper automatically finds the correct path
+- iOS uses native implementation
+- No libapp.so path required for iOS
 
 #### Example Usage
 ```dart

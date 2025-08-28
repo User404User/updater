@@ -58,7 +58,7 @@ if [ -d "$ANDROID_JNILIBS_DIR" ]; then
     mkdir -p "$ANDROID_JNILIBS_DIR/x86"
 fi
 
-# iOS 使用官方包，不需要生成库文件
+# iOS 使用原生实现，不需要生成库文件
 
 # 4. 清理 Rust 构建缓存
 log_info "   清理 Rust 构建缓存: $CARGO_TARGET_DIR"
@@ -165,8 +165,8 @@ else
     log_error "cargo-ndk 未安装，跳过 Android 构建"
 fi
 
-# iOS 使用官方包和 DNS Hook，不需要构建库
-log_info "🍎 iOS 使用官方 Shorebird 包 + DNS Hook，跳过库构建"
+# iOS 使用原生实现，不需要构建库
+log_info "🍎 iOS 使用原生实现，跳过库构建"
 
 # 生成头文件
 log_info "📄 生成头文件..."
@@ -189,7 +189,7 @@ if [ -d "$OUTPUT_DIR/android" ]; then
 fi
 
 # iOS 不需要复制库文件
-log_info "✓ iOS 使用官方包，无需复制库文件"
+log_info "✓ iOS 使用原生实现，无需复制库文件"
 
 # 生成使用说明
 cat > "$OUTPUT_DIR/README.md" << 'EOF'
@@ -203,7 +203,7 @@ cat > "$OUTPUT_DIR/README.md" << 'EOF'
 - `android/*/libshorebird_updater_network.so` - 各架构的动态库
 
 ### iOS
-- iOS 使用官方 Shorebird 包 + DNS Hook 实现，无需额外库文件
+- iOS 使用原生实现，无需额外库文件
 
 ### 头文件
 - `shorebird_updater_network.h` - C API 头文件
@@ -214,7 +214,7 @@ cat > "$OUTPUT_DIR/README.md" << 'EOF'
 将对应架构的 .so 文件复制到 `app/src/main/jniLibs/{架构}/`
 
 ### iOS
-iOS 使用官方 Shorebird 包，网络拦截通过 DNS Hook 自动实现
+iOS 使用原生实现
 
 ### Flutter
 使用 `ShorebirdCodePushNetwork` 类：

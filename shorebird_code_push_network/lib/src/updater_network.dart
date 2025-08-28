@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
 
 import 'package:shorebird_code_push_network/src/generated/updater_bindings.g.dart';
-import 'package:shorebird_code_push_network/src/generated/ios_bindings.dart';
 import 'package:shorebird_code_push_network/src/network_init.dart';
 import 'package:shorebird_code_push_network/src/shorebird_updater.dart';
 import 'package:shorebird_code_push_network/src/updater.dart';
@@ -106,7 +105,7 @@ class UpdaterNetwork extends Updater {
     if (Platform.isAndroid) {
       _loadAndroidLibrary();
     } else if (Platform.isIOS) {
-      // _loadIOSLibrary();
+      // iOS doesn't need to load library
     } else {
       throw UnsupportedError(
         'Platform ${Platform.operatingSystem} not supported for network library'
@@ -204,12 +203,15 @@ class UpdaterNetwork extends Updater {
   /// Whether a new patch is available for download.
   @override
   Future<bool> checkForDownloadableUpdate({UpdateTrack? track}) async {
-    final trackPtr = track == null 
-      ? ffi.nullptr 
-      : track.name.toNativeUtf8().cast<Char>();
+
     if (Platform.isIOS) {
       return ShorebirdCodePush().isNewPatchAvailableForDownload();
     }
+
+    final trackPtr = track == null 
+      ? ffi.nullptr 
+      : track.name.toNativeUtf8().cast<Char>();
+
     return networkBindings.shorebird_check_for_downloadable_update(trackPtr);
   }
 
@@ -239,28 +241,41 @@ class UpdaterNetwork extends Updater {
   @override
   bool updateBaseUrl(String baseUrl) {
     debugPrint('UpdaterNetwork.updateBaseUrl called with: $baseUrl');
-    final urlPtr = baseUrl.toNativeUtf8().cast<Char>();
     
     try {
       bool result;
       if (Platform.isIOS) {
-        debugPrint('Calling iOS function: shorebird_update_base_url_net');
-        //hook实现
+        debugPrint('iOS: Updating API host mapping');
+        // 从sURL中提取host
+        final uri = Uri.tryParse(baseUrl);
+        if (uri == null || uri.host.isEmpty) {
+          debugPrint('Invalid URL: $baseUrl');
+          return false;
+        }
+        
+        debugPrint('Extracted host: ${uri.host}');
+        
+        // 通过method channel调用原生方法更新host映射
+        _channel.invokeMethod('updateBaseUrl', {
+          'baseUrl': baseUrl,
+        }).then((value) {
+          debugPrint('iOS updateBaseUrl result: $value');
+        }).catchError((error) {
+          debugPrint('iOS updateBaseUrl error: $error');
+        });
+        
         result = true;
       } else {
         debugPrint('Calling Android function: shorebird_update_base_url');
+        final urlPtr = baseUrl.toNativeUtf8().cast<Char>();
         result = networkBindings.shorebird_update_base_url(urlPtr);
+        malloc.free(urlPtr);
       }
       
       debugPrint('updateBaseUrl result: $result');
-      
-      // 释放内存
-      malloc.free(urlPtr);
-      
       return result;
     } catch (e) {
       debugPrint('ERROR in updateBaseUrl: $e');
-      malloc.free(urlPtr);
       rethrow;
     }
   }
@@ -270,41 +285,122 @@ class UpdaterNetwork extends Updater {
   bool updateDownloadUrl(String? downloadUrl) {
     debugPrint('UpdaterNetwork.updateDownloadUrl called with: $downloadUrl');
     
-    if (downloadUrl == null) {
-      // Pass null pointer to clear the download URL
-      bool result;
-      if (Platform.isIOS) {
-        result = false;
-      } else {
-        result = networkBindings.shorebird_update_download_url(nullptr);
-      }
-      debugPrint('updateDownloadUrl (clear) result: $result');
-      return result;
-    }
-    
-    final urlPtr = downloadUrl.toNativeUtf8().cast<Char>();
-    
     try {
       bool result;
       if (Platform.isIOS) {
-        debugPrint('Calling iOS function: shorebird_update_download_url_net');
-        //hook实现
-        result = true;
+        if (downloadUrl == null) {
+          // 清除自定义CDN主机
+          debugPrint('iOS: Clearing CDN host mapping');
+          _channel.invokeMethod('updateDownloadUrl', {
+            'downloadUrl': null,
+          }).then((value) {
+            debugPrint('iOS updateDownloadUrl (clear) result: $value');
+          }).catchError((error) {
+            debugPrint('iOS updateDownloadUrl (clear) error: $error');
+          });
+          result = true;
+        } else {
+          debugPrint('iOS: Updating CDN host mapping');
+          // 从sURL中提取host
+          final uri = Uri.tryParse(downloadUrl);
+          if (uri == null || uri.host.isEmpty) {
+            debugPrint('Invalid URL: $downloadUrl');
+            return false;
+          }
+          
+          debugPrint('Extracted host: ${uri.host}');
+          
+          // 通过method channel调用原生方法更新host映射
+          _channel.invokeMethod('updateDownloadUrl', {
+            'downloadUrl': downloadUrl,
+          }).then((value) {
+            debugPrint('iOS updateDownloadUrl result: $value');
+          }).catchError((error) {
+            debugPrint('iOS updateDownloadUrl error: $error');
+          });
+          
+          result = true;
+        }
       } else {
-        debugPrint('Calling Android function: shorebird_update_download_url');
-        result = networkBindings.shorebird_update_download_url(urlPtr);
+        // Android
+        if (downloadUrl == null) {
+          result = networkBindings.shorebird_update_download_url(nullptr);
+        } else {
+          final urlPtr = downloadUrl.toNativeUtf8().cast<Char>();
+          result = networkBindings.shorebird_update_download_url(urlPtr);
+          malloc.free(urlPtr);
+        }
       }
       
       debugPrint('updateDownloadUrl result: $result');
-      
-      // 释放内存
-      malloc.free(urlPtr);
-      
       return result;
     } catch (e) {
       debugPrint('ERROR in updateDownloadUrl: $e');
-      malloc.free(urlPtr);
       rethrow;
+    }
+  }
+  
+  /// Add a custom host mapping for domain redirection
+  /// This allows any domain to be redirected to a mirror domain
+  static Future<bool> addHostMapping(String originalHost, String redirectHost) async {
+    debugPrint('UpdaterNetwork.addHostMapping: $originalHost -> $redirectHost');
+    
+    if (Platform.isIOS) {
+      try {
+        final result = await _channel.invokeMethod('addHostMapping', {
+          'originalHost': originalHost,
+          'redirectHost': redirectHost,
+        });
+        debugPrint('iOS addHostMapping result: $result');
+        return result == true;
+      } catch (e) {
+        debugPrint('iOS addHostMapping error: $e');
+        return false;
+      }
+    } else {
+      // Android doesn't need this as it uses URL-based approach
+      debugPrint('Android: Host mapping not needed (uses URL-based approach)');
+      return true;
+    }
+  }
+  
+  /// Remove a host mapping
+  static Future<bool> removeHostMapping(String originalHost) async {
+    debugPrint('UpdaterNetwork.removeHostMapping: $originalHost');
+    
+    if (Platform.isIOS) {
+      try {
+        final result = await _channel.invokeMethod('removeHostMapping', {
+          'originalHost': originalHost,
+        });
+        debugPrint('iOS removeHostMapping result: $result');
+        return result == true;
+      } catch (e) {
+        debugPrint('iOS removeHostMapping error: $e');
+        return false;
+      }
+    } else {
+      debugPrint('Android: Host mapping removal not needed');
+      return true;
+    }
+  }
+  
+  /// Clear all host mappings
+  static Future<bool> clearAllHostMappings() async {
+    debugPrint('UpdaterNetwork.clearAllHostMappings');
+    
+    if (Platform.isIOS) {
+      try {
+        final result = await _channel.invokeMethod('clearAllHostMappings');
+        debugPrint('iOS clearAllHostMappings result: $result');
+        return result == true;
+      } catch (e) {
+        debugPrint('iOS clearAllHostMappings error: $e');
+        return false;
+      }
+    } else {
+      debugPrint('Android: Host mapping clearing not needed');
+      return true;
     }
   }
 }

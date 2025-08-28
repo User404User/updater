@@ -14,33 +14,60 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <dlfcn.h>
+#include <resolv.h>
+#include <netinet/tcp.h>
 
-// 原始函数指针
+// DNS 相关原始函数指针
 static int (*orig_getaddrinfo)(const char *node, const char *service,
                                const struct addrinfo *hints,
                                struct addrinfo **res);
+static struct hostent* (*orig_gethostbyname)(const char *name);
 
 // socket 相关函数
 static int (*orig_connect)(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-static int (*orig_socket)(int domain, int type, int protocol);
-static ssize_t (*orig_send)(int sockfd, const void *buf, size_t len, int flags);
-static ssize_t (*orig_recv)(int sockfd, void *buf, size_t len, int flags);
-static ssize_t (*orig_sendto)(int sockfd, const void *buf, size_t len, int flags,
-                             const struct sockaddr *dest_addr, socklen_t addrlen);
-static ssize_t (*orig_recvfrom)(int sockfd, void *buf, size_t len, int flags,
-                               struct sockaddr *src_addr, socklen_t *addrlen);
 
-// 高层 API hook
-typedef void* (*CFReadStreamCreateWithBytesNoCopy_t)(void *alloc, const void *bytes, long long length, void *bytesDeallocator);
-typedef void* (*CFWriteStreamCreateWithBuffer_t)(void *alloc, void *buffer, long long bufferCapacity);
+// 存储自定义主机地址映射
+typedef struct {
+    char *original_host;
+    char *redirect_host;
+} HostMapping;
 
-static CFReadStreamCreateWithBytesNoCopy_t orig_CFReadStreamCreateWithBytesNoCopy = NULL;
-static CFWriteStreamCreateWithBuffer_t orig_CFWriteStreamCreateWithBuffer = NULL;
+#define MAX_HOST_MAPPINGS 10
+static HostMapping host_mappings[MAX_HOST_MAPPINGS];
+static int host_mapping_count = 0;
+static pthread_mutex_t host_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// 存储自定义主机地址
+// 兼容旧接口
 static char *custom_api_host = NULL;
 static char *custom_cdn_host = NULL;
-static pthread_mutex_t host_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Hook 后的 gethostbyname 函数
+struct hostent* hooked_gethostbyname(const char *name) {
+    if (!name) {
+        return orig_gethostbyname(name);
+    }
+    
+    NSLog(@"🌐 [NetworkHook] DNS查询2 (gethostbyname): %s", name);
+    
+    pthread_mutex_lock(&host_mutex);
+    
+    const char *target_name = name;
+    
+    // 检查是否需要重定向 API 域名
+    if (strcmp(name, "api.shorebird.dev") == 0 && custom_api_host) {
+        target_name = custom_api_host;
+        NSLog(@"[NetworkHook] 重定向 api.shorebird.dev -> %s", custom_api_host);
+    }
+    // 检查是否需要重定向 CDN 域名
+    else if (strcmp(name, "cdn.shorebird.cloud") == 0 && custom_cdn_host) {
+        target_name = custom_cdn_host;
+        NSLog(@"[NetworkHook] 重定向 cdn.shorebird.cloud -> %s", custom_cdn_host);
+    }
+    
+    pthread_mutex_unlock(&host_mutex);
+    
+    return orig_gethostbyname(target_name);
+}
 
 // Hook 后的 getaddrinfo 函数
 int my_getaddrinfo(const char *node, const char *service,
@@ -50,19 +77,34 @@ int my_getaddrinfo(const char *node, const char *service,
         return orig_getaddrinfo(node, service, hints, res);
     }
     
+    // 记录所有 DNS 查询的域名
+    NSLog(@"🌐 [NetworkHook] DNS查询1 (getaddrinfo): %s", node);
+    
     pthread_mutex_lock(&host_mutex);
     
     const char *target_node = node;
+    const char *original_node = node;
     
-    // 检查是否需要重定向 API 域名
-    if (strcmp(node, "api.shorebird.dev") == 0 && custom_api_host) {
-        target_node = custom_api_host;
-        NSLog(@"[ShorebirdNetworkHook] Redirecting api.shorebird.dev to %s", custom_api_host);
+    // 先检查通用映射表
+    for (int i = 0; i < host_mapping_count; i++) {
+        if (host_mappings[i].original_host && 
+            strcmp(node, host_mappings[i].original_host) == 0) {
+            target_node = host_mappings[i].redirect_host;
+            NSLog(@"🔄 [NetworkHook] 域名重定向: %s -> %s", node, target_node);
+            break;
+        }
     }
-    // 检查是否需要重定向 CDN 域名
-    else if (strcmp(node, "cdn.shorebird.cloud") == 0 && custom_cdn_host) {
-        target_node = custom_cdn_host;
-        NSLog(@"[ShorebirdNetworkHook] Redirecting cdn.shorebird.cloud to %s", custom_cdn_host);
+    
+    // 兼容旧的特定域名检查
+    if (target_node == node) {
+        if (strcmp(node, "api.shorebird.dev") == 0 && custom_api_host) {
+            target_node = custom_api_host;
+            NSLog(@"[NetworkHook] 重定向 api.shorebird.dev -> %s", custom_api_host);
+        }
+        else if (strcmp(node, "cdn.shorebird.cloud") == 0 && custom_cdn_host) {
+            target_node = custom_cdn_host;
+            NSLog(@"[NetworkHook] 重定向 cdn.shorebird.cloud -> %s", custom_cdn_host);
+        }
     }
     
     pthread_mutex_unlock(&host_mutex);
@@ -93,134 +135,48 @@ int my_getaddrinfo(const char *node, const char *service,
     return orig_getaddrinfo(target_node, service, hints, res);
 }
 
-// 打印 socket 地址信息
-static void log_socket_address(const char *func_name, const struct sockaddr *addr) {
-    if (!addr) return;
-    
-    char addr_str[INET6_ADDRSTRLEN];
-    int port = 0;
-    
-    if (addr->sa_family == AF_INET) {
-        struct sockaddr_in *addr_in = (struct sockaddr_in *)addr;
-        inet_ntop(AF_INET, &(addr_in->sin_addr), addr_str, INET_ADDRSTRLEN);
-        port = ntohs(addr_in->sin_port);
-        NSLog(@"[NetworkHook] %s: IPv4 %s:%d", func_name, addr_str, port);
-    } else if (addr->sa_family == AF_INET6) {
-        struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)addr;
-        inet_ntop(AF_INET6, &(addr_in6->sin6_addr), addr_str, INET6_ADDRSTRLEN);
-        port = ntohs(addr_in6->sin6_port);
-        NSLog(@"[NetworkHook] %s: IPv6 [%s]:%d", func_name, addr_str, port);
-    }
-}
-
-// Hook 后的 connect 函数
+// Hook 后的 connect 函数 - 简化版，只在必要时打印
 int hooked_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
-    log_socket_address("connect", addr);
+    if (addr && addr->sa_family == AF_INET) {
+        struct sockaddr_in *addr_in = (struct sockaddr_in *)addr;
+        int port = ntohs(addr_in->sin_port);
+        
+        // 只对 HTTP/HTTPS 端口进行日志记录
+        if (port == 80 || port == 443 || port == 8080 || port == 8443) {
+            char addr_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &(addr_in->sin_addr), addr_str, INET_ADDRSTRLEN);
+            
+            char host[NI_MAXHOST];
+            // 尝试反向查询域名
+            if (getnameinfo(addr, addrlen, host, sizeof(host), NULL, 0, NI_NUMERICSERV) == 0) {
+                NSLog(@"🔗 [NetworkHook] 连接到: %s:%d", host, port);
+            } else {
+                NSLog(@"🔗 [NetworkHook] 连接到: %s:%d", addr_str, port);
+            }
+        }
+    }
+    
     return orig_connect(sockfd, addr, addrlen);
-}
-
-// Hook 后的 socket 函数
-int hooked_socket(int domain, int type, int protocol) {
-    int fd = orig_socket(domain, type, protocol);
-    
-    const char *domain_str = "UNKNOWN";
-    const char *type_str = "UNKNOWN";
-    
-    switch (domain) {
-        case AF_INET: domain_str = "AF_INET"; break;
-        case AF_INET6: domain_str = "AF_INET6"; break;
-        case AF_UNIX: domain_str = "AF_UNIX"; break;
-    }
-    
-    // iOS 不支持 SOCK_NONBLOCK 和 SOCK_CLOEXEC，直接使用 type
-    switch (type) {
-        case SOCK_STREAM: type_str = "SOCK_STREAM"; break;
-        case SOCK_DGRAM: type_str = "SOCK_DGRAM"; break;
-        case SOCK_RAW: type_str = "SOCK_RAW"; break;
-    }
-    
-    NSLog(@"[NetworkHook] socket: fd=%d, domain=%s, type=%s, protocol=%d", 
-          fd, domain_str, type_str, protocol);
-    return fd;
-}
-
-// Hook 后的 send 函数
-ssize_t hooked_send(int sockfd, const void *buf, size_t len, int flags) {
-    ssize_t result = orig_send(sockfd, buf, len, flags);
-    NSLog(@"[NetworkHook] send: fd=%d, len=%zu, sent=%zd, flags=%d", 
-          sockfd, len, result, flags);
-    
-    // 打印前 100 字节的数据（如果是文本）
-    if (result > 0 && buf) {
-        NSData *data = [NSData dataWithBytes:buf length:MIN(result, 100)];
-        NSString *preview = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        if (preview) {
-            NSLog(@"[NetworkHook] send data preview: %@...", preview);
-        }
-    }
-    
-    return result;
-}
-
-// Hook 后的 recv 函数
-ssize_t hooked_recv(int sockfd, void *buf, size_t len, int flags) {
-    ssize_t result = orig_recv(sockfd, buf, len, flags);
-    NSLog(@"[NetworkHook] recv: fd=%d, requested=%zu, received=%zd, flags=%d", 
-          sockfd, len, result, flags);
-    
-    // 打印前 100 字节的数据（如果是文本）
-    if (result > 0 && buf) {
-        NSData *data = [NSData dataWithBytes:buf length:MIN(result, 100)];
-        NSString *preview = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        if (preview) {
-            NSLog(@"[NetworkHook] recv data preview: %@...", preview);
-        }
-    }
-    
-    return result;
-}
-
-// Hook 后的 sendto 函数
-ssize_t hooked_sendto(int sockfd, const void *buf, size_t len, int flags,
-                      const struct sockaddr *dest_addr, socklen_t addrlen) {
-    log_socket_address("sendto", dest_addr);
-    ssize_t result = orig_sendto(sockfd, buf, len, flags, dest_addr, addrlen);
-    NSLog(@"[NetworkHook] sendto: fd=%d, len=%zu, sent=%zd", sockfd, len, result);
-    return result;
-}
-
-// Hook 后的 recvfrom 函数
-ssize_t hooked_recvfrom(int sockfd, void *buf, size_t len, int flags,
-                        struct sockaddr *src_addr, socklen_t *addrlen) {
-    ssize_t result = orig_recvfrom(sockfd, buf, len, flags, src_addr, addrlen);
-    if (result > 0 && src_addr) {
-        log_socket_address("recvfrom", src_addr);
-    }
-    NSLog(@"[NetworkHook] recvfrom: fd=%d, received=%zd", sockfd, result);
-    return result;
 }
 
 // 在模块加载时自动执行 Hook
 __attribute__((constructor))
 static void init_hook() {
-    NSLog(@"[ShorebirdNetworkHook] Initializing network hooks...");
+    NSLog(@"🚀 [ShorebirdNetworkHook] 正在初始化网络 Hook (精简版)...");
     
     struct rebinding rebindings[] = {
+        // DNS 查询
         {"getaddrinfo", my_getaddrinfo, (void **)&orig_getaddrinfo},
+        {"gethostbyname", hooked_gethostbyname, (void **)&orig_gethostbyname},
         {"connect", hooked_connect, (void **)&orig_connect},
-        {"socket", hooked_socket, (void **)&orig_socket},
-        {"send", hooked_send, (void **)&orig_send},
-        {"recv", hooked_recv, (void **)&orig_recv},
-        {"sendto", hooked_sendto, (void **)&orig_sendto},
-        {"recvfrom", hooked_recvfrom, (void **)&orig_recvfrom},
     };
     
     int result = rebind_symbols(rebindings, sizeof(rebindings)/sizeof(rebindings[0]));
     
     if (result == 0) {
-        NSLog(@"[ShorebirdNetworkHook] Network hooks initialized successfully");
+        NSLog(@"✅ [ShorebirdNetworkHook] 网络 Hook 初始化成功！");
     } else {
-        NSLog(@"[ShorebirdNetworkHook] Failed to initialize some hooks: %d", result);
+        NSLog(@"⚠️ [ShorebirdNetworkHook] 部分 Hook 初始化失败: %d", result);
     }
 }
 
@@ -272,4 +228,77 @@ const char* shorebird_get_custom_cdn_host(void) {
     const char *host = custom_cdn_host;
     pthread_mutex_unlock(&host_mutex);
     return host;
+}
+
+// 添加通用的域名映射
+void shorebird_add_host_mapping(const char *original_host, const char *redirect_host) {
+    if (!original_host || !redirect_host) return;
+    
+    pthread_mutex_lock(&host_mutex);
+    
+    // 先检查是否已存在
+    for (int i = 0; i < host_mapping_count; i++) {
+        if (host_mappings[i].original_host && 
+            strcmp(host_mappings[i].original_host, original_host) == 0) {
+            // 更新现有映射
+            free(host_mappings[i].redirect_host);
+            host_mappings[i].redirect_host = strdup(redirect_host);
+            pthread_mutex_unlock(&host_mutex);
+            NSLog(@"[NetworkHook] 更新域名映射: %s -> %s", original_host, redirect_host);
+            return;
+        }
+    }
+    
+    // 添加新映射
+    if (host_mapping_count < MAX_HOST_MAPPINGS) {
+        host_mappings[host_mapping_count].original_host = strdup(original_host);
+        host_mappings[host_mapping_count].redirect_host = strdup(redirect_host);
+        host_mapping_count++;
+        NSLog(@"[NetworkHook] 添加域名映射: %s -> %s", original_host, redirect_host);
+    } else {
+        NSLog(@"[NetworkHook] 域名映射表已满，无法添加新映射");
+    }
+    
+    pthread_mutex_unlock(&host_mutex);
+}
+
+// 移除域名映射
+void shorebird_remove_host_mapping(const char *original_host) {
+    if (!original_host) return;
+    
+    pthread_mutex_lock(&host_mutex);
+    
+    for (int i = 0; i < host_mapping_count; i++) {
+        if (host_mappings[i].original_host && 
+            strcmp(host_mappings[i].original_host, original_host) == 0) {
+            free(host_mappings[i].original_host);
+            free(host_mappings[i].redirect_host);
+            
+            // 移动后面的元素
+            for (int j = i; j < host_mapping_count - 1; j++) {
+                host_mappings[j] = host_mappings[j + 1];
+            }
+            
+            host_mapping_count--;
+            NSLog(@"[NetworkHook] 移除域名映射: %s", original_host);
+            break;
+        }
+    }
+    
+    pthread_mutex_unlock(&host_mutex);
+}
+
+// 清空所有域名映射
+void shorebird_clear_all_host_mappings(void) {
+    pthread_mutex_lock(&host_mutex);
+    
+    for (int i = 0; i < host_mapping_count; i++) {
+        free(host_mappings[i].original_host);
+        free(host_mappings[i].redirect_host);
+    }
+    
+    host_mapping_count = 0;
+    NSLog(@"[NetworkHook] 清空所有域名映射");
+    
+    pthread_mutex_unlock(&host_mutex);
 }
