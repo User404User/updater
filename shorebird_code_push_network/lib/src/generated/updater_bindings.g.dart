@@ -2412,7 +2412,7 @@ class UpdaterBindings {
 
   /// The currently running patch number, or 0 if the release has not been
   /// patched.
-  Future<int?> shorebird_current_boot_patch_number() {
+  Future<int?> shorebird_current_boot_patch_number() async {
     return _shorebird_current_boot_patch_number();
   }
 
@@ -2424,7 +2424,7 @@ class UpdaterBindings {
 
   /// The patch number that will boot on the next run of the app, or 0 if there is
   /// no next patch.
-  Future<int?> shorebird_next_boot_patch_number() {
+  Future<int?> shorebird_next_boot_patch_number() async {
     return _shorebird_next_boot_patch_number();
   }
 
@@ -2499,7 +2499,7 @@ class UpdaterBindings {
   /// Returns true if an update exists that has not yet been downloaded.
   Future<bool> shorebird_check_for_downloadable_update (
     ffi.Pointer<ffi.Char> c_channel,
-  ) {
+  ) async {
     return _shorebird_check_for_downloadable_update(
       c_channel,
     );
